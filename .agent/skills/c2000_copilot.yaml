@@ -1,0 +1,170 @@
+# ==============================================================================
+# Google Antigravity Agent Skill Definition
+# Skill Name: C2000 Senior Firmware Copilot
+# Target: TI C2000 逆變器控制底層開發
+# ==============================================================================
+
+agent:
+  name: C2000-Senior-Firmware-Copilot
+  version: 1.2.0
+  description: "專為 TI C2000 高頻逆變器底層韌體開發打造的自主代理技能，嚴格遵守物理邊界、三層解耦架構與零除法規範。"
+  capabilities:
+    - mcp_client          # 支援 Model Context Protocol 以連接外部工具
+    - file_system_access  # 沙盒化檔案系統讀寫權限
+    - terminal_execution  # 安全的終端機執行權限 (用於編譯與 HIL 測試)
+  
+  # 核心系統指令 (System Prompt)
+  system_prompt: |
+    你是負責 TI C2000 逆變器控制底層開發的「資深韌體副操縱士 (Senior Firmware Copilot)」。
+    你的核心任務是產生高內聚低耦合、硬體安全且具備 99.9% 即時性收斂機率的 C 語言代碼。
+    【絕對邊界】：
+    1. 必須 100% 遵守 `.agent/rules/rules.md`（工作區下的唯一規則來源）。
+    2. 禁止使用原生型別 (int, char)，強制使用 <stdint.h> 並搭配匈牙利命名法。
+    3. 控制迴路絕對禁用除法 (/) 與 malloc/free。
+    4. 所有檔案與程式碼必須相容 MS950，嚴禁在 C/H 檔內使用中文或 LaTeX 公式。
+    5. 回覆請使用繁體中文，並保持工程師的冷靜與精確（結論 -> 證據 -> 行動）。
+
+  # SDD 狀態機工作流 (Workflow State Machine)
+  # 嚴格管控 Agent 在不同指令階段의 行為與權限
+  state_machine:
+    phases:
+      - name: specify
+        trigger: "/specify"
+        description: "需求定義階段：讀取時脈等底層上下文，建立規格書"
+        permissions:
+          allow_code_generation: false # 鎖定代碼生成
+          allow_file_write: true       # 僅允許寫入 .md 文件
+        actions:
+          - read_file: "device/device.c"
+          - execute_prompt: "提取 SYSCLK，引導使用者建立 EARS 語法規格書 `spec.md`"
+
+      - name: design
+        trigger: "/design"
+        description: "技術設計階段：檢索 TRM 與 DriverLib，設計 DTO 與介面契約"
+        permissions:
+          allow_code_generation: false
+          allow_file_write: true       # 僅允許寫入 .h 標頭檔作為 Artifact
+        actions:
+          - tool_call: "query_trm"
+          - tool_call: "query_driverlib"
+          - execute_prompt: "規劃 32/64-bit 對齊的 DTO，落實 Interface Contract First"
+
+      - name: implement
+        trigger: "/implement"
+        description: "沙盒實作階段：執行 CoT 檢查並產出預覽代碼"
+        permissions:
+          allow_code_generation: true
+          sandbox_write_only: true     # 啟動沙盒鎖 (Tool Lock)，僅允許輸出至 Artifacts
+        actions:
+          - execute_prompt: "基於介面契約產出實作，寫入 `filename_preview.c` 與 `filename_preview.h`；若實作中需確認 DriverLib API 原型，可按需呼叫 query_driverlib"
+          - tool_call: "pre_flight_check"
+          # 注意：query_driverlib 在 design 階段強制執行，implement 僅允許按需查詢
+
+      - name: verify
+        trigger: "/verify"
+        description: "硬體驗證與交付階段：要求物理證據並準備 Git Commit"
+        permissions:
+          allow_code_generation: false
+          allow_git_operations: true
+        actions:
+          - execute_prompt: "要求提供實體物理證據 (示波器波形或暫存器 Log)。若通過，生成 Conventional Commits 訊息"
+
+  # 擴展工具定義 (MCP Tools)
+  tools:
+    - name: query_trm
+      description: "檢索 TI C2000 Technical Reference Manual (TRM)，獲取精確的暫存器定義與位址，禁止憑空捏造。支援模組：ADC, DMA, EPWM, IPC, MCBSP, SPI。"
+      executor: "python .agent/skills/query_trm.py {module_name} {register_query}"
+      parameters:
+        type: object
+        properties:
+          module_name:
+            type: string
+            description: "硬體周邊模組名稱 (例如: EPWM, ADC, SPI)"
+          register_query:
+            type: string
+            description: "欲查詢的具體暫存器或位元欄位 (例如: AQCTLA.bit.ZRO)"
+        required: ["module_name", "register_query"]
+
+    - name: query_driverlib
+      description: "檢索 TI C2000Ware DriverLib 本地安裝，獲取函式原型、參數說明與 Doxygen 文件。路徑：C:\\ti\\c2000\\C2000Ware_5_04_00_00\\driverlib\\f2838x\\driverlib"
+      executor: "python .agent/skills/query_driverlib.py {module_name} {function_name}"
+      parameters:
+        type: object
+        properties:
+          module_name:
+            type: string
+            description: "硬體周邊模組名稱，對應 .h 檔案名稱 (例如: spi, epwm, adc, gpio)"
+          function_name:
+            type: string
+            description: "欲查詢的函式名稱或關鍵字 (例如: SPI_writeDataNonBlocking, SPI_setConfig)"
+        required: ["module_name", "function_name"]
+      returns:
+        type: object
+        properties:
+          prototype:
+            type: string
+            description: "完整的函式宣告原型 (含回傳型別與參數列)"
+          doxygen_comment:
+            type: string
+            description: "函式前的 Doxygen 說明文件 (//! 區塊)"
+
+    - name: pre_flight_check
+      description: "在輸出任何 C/C++ 實作代碼前，強制執行的 CoT (Chain of Thought) 檢核程序。等同 check-division + safety-scan 的組合執行入口。"
+      parameters:
+        type: object
+        properties:
+          target_file:
+            type: string
+            description: "即將生成的檔案名稱 (如 spi_hal_preview.c)"
+      returns:
+        type: object
+        properties:
+          passed:
+            type: boolean
+            description: "是否全數通過 (無除法、無malloc、無while阻塞等)"
+          report:
+            type: string
+            description: "繁體中文的逐項檢查報告"
+          violations:
+            type: array
+            items:
+              type: string
+            description: "具體違規項目列表 (供自動化處理)"
+          severity:
+            type: string
+            enum: ["error", "warning", "info"]
+            description: "整體嚴重程度分級"
+
+    # check-division 與 safety-scan 是 pre_flight_check 的功能子集別名
+    # 在 workflows.yaml 中引用此別名時，實際執行 pre_flight_check 的除法與型態掃描
+    - name: check-division
+      description: "[pre_flight_check 子集] 專門掃描控制迴路中的除法運算符 `/`，確認已全部替換為倒數乘法或 TMU。"
+      executor: "python .agent/skills/query_trm.py --check-division {target_file}"
+      parameters:
+        type: object
+        properties:
+          target_file:
+            type: string
+            description: "欲掃描的 C/H 原始碼檔案路徑"
+
+    - name: safety-scan
+      description: "[pre_flight_check 子集] 掃描 EALLOW/EDIS 包覆完整性與型態安全 (無 int/char/long 原生型別)。"
+      executor: "python .agent/skills/query_trm.py --safety-scan {target_file}"
+      parameters:
+        type: object
+        properties:
+          target_file:
+            type: string
+            description: "欲掃描的 C/H 原始碼檔案路徑"
+
+  # 自動化攔截器 (Agent Hooks)
+  hooks:
+    pre_tool_call:
+      - condition: "tool == 'write_to_file' and phase == 'implement'"
+        action: "enforce_sandbox_prefix" # 強制檔案加上 _preview 前綴
+    post_code_generation:
+      - action: "verify_ms950_compliance" # 確保無非 ASCII 字符污染
+    pre_file_save:
+      - condition: "file.endswith('.c') or file.endswith('.h')"
+        action: "verify_c2000_constraints" # C2000 物理邊界約束自檢
+

@@ -1,0 +1,224 @@
+# TI C2000 Agent Workflows (Dynamic Execution Chains)
+# 此配置對接 IDE (如 Kiro / Google Antigravity) 的 Task Groups 或 Hooks 機制
+
+workflows:
+  - name: hardware_migration_preflight
+    description: "硬體遷移與修改前置檢查。預防腳位與內核指派衝突。"
+    trigger:
+      intents: ["modify_peripheral", "add_hardware_module", "migrate_core"]
+    execution_sequence:
+      - step: 1
+        action: "parse_files"
+        targets: ["main.c", "device.c"]
+        purpose: "提取 CPU1/CPU2/CLA 的所有權指派矩陣 (Ownership Matrix)。"
+      - step: 2
+        action: "parse_files"
+        targets: ["pinmux.syscfg"]
+        purpose: "核對暫存器層級的精確分配。"
+      - step: 3
+        action: "cross_reference"
+        targets: ["README.md"]
+        purpose: "驗證模組物理位置與架構定義檔的功能職責是否一致。"
+    assertions:
+      - condition: "is_consistent(step_1, step_2, step_3)"
+        on_fail:
+          action: "trigger_workflow"
+          target: "halt_and_report_protocol"
+          inject_context: "物理位置與系統指派不符。"
+
+  - name: halt_and_report_protocol
+    description: "異常中斷協議，做為全局守護行程 (Daemon) 運行。"
+    trigger:
+      events: ["on_code_generation", "on_code_review", "on_task_execution"]
+    assertions:
+      - condition: "contains('[HARDWARE_AUDIT]')"
+        on_fail:
+          action: "abort_generation"
+          output_format: |
+             [🛑 執法攔截]：未發現強制性的 [HARDWARE_AUDIT] 區塊。
+             根據 .agent/rules/rules.md 中的 [PRE_FLIGHT_CHECK] 自檢規範，任何代碼修改前必須先提供底層硬體驗證與自檢證據。
+      - condition: "not contains('malloc')"
+        on_fail:
+          action: "abort_generation"
+          output_format: "[🚨 安全阻斷]：檢測到 malloc 動態記憶體分配。C2000 逆變器韌體嚴禁使用動態分配。"
+      - condition: "not (has_fpu32() and contains('IQmath'))"
+        on_fail:
+          action: "abort_generation"
+          output_format: "[🚨 性能警告]：硬體支援 FPU32 時，請直接使用原生浮點運算，嚴禁載入 IQmath 函式庫。"
+      - condition: 'ipc_access_has_barrier("asm(\" RPT #3 || NOP\");")'
+        on_fail:
+          action: "abort_generation"
+          output_format: "[🚨 時序風險]：IPC / 多核暫存器存取缺乏 RPT #3 阻障，可能引發流水線衝突。"
+      - condition: "not contains_blocking_while_for_hardware_flags()"
+        on_fail:
+          action: "abort_generation"
+          output_format: "[🚨 安全隱患]：檢測到阻塞式 while 迴圈。暫存器 polling 必須限制最大計數，嚴禁死等。"
+      - condition: "not contains_native_types(['int', 'char', 'long'])"
+        on_fail:
+          action: "abort_generation"
+          output_format: |
+            [🚨 邊界衝突]：違反 C2000 鐵則 (Native Types)。
+            請重新校準代碼邏輯，使用 stdint 類型。
+
+  - name: control_card_bringup_audit
+    description: "新 PCB Control Card 的硬體驗證與韌體初始化審查。"
+    trigger:
+      intents: ["new_pcb_check", "bringup_control_card", "hardware_validation"]
+    execution_sequence:
+      - step: 1
+        action: "parse_files"
+        targets: [".agent/specs/Hardware/CONTROL_CARD_BRINGUP_SPEC.md"]
+        purpose: "讀取標準硬體審核規範 (SDD)。"
+      - step: 2
+        action: "audit_hardware_config"
+        targets: ["FLASH/syscfg/board.c", "pinmux.syscfg", "device.c"]
+        enforce: "hardware_snapshot_table"
+        purpose: "核對軟體配置與實體硬體規格 (如 SPI Mode, PWM Deadband) 是否匹配。"
+      - step: 3
+        action: "generate_checklist"
+        output_format: "markdown_table"
+        purpose: "產出針對當前 PCB 版本的專屬驗證清單。"
+      - step: 4
+        action: "record_measurements"
+        target: ".agent/specs/Hardware/CONTROL_CARD_BRINGUP_SPEC.md"
+        enforce: "mandatory_update_after_test"
+        purpose: "測試完成後必須立即將「實測數值」同步更新至規格書，嚴禁跳關。"
+    assertions:
+      - condition: "has_updated_measurements('.agent/specs/Hardware/CONTROL_CARD_BRINGUP_SPEC.md')"
+        on_fail:
+          action: "abort_audit"
+          inject_context: "[🚨 規格核對失敗]：硬體測試完成後，必須將實測數據更新至 CONTROL_CARD_BRINGUP_SPEC.md 規格書中，嚴禁跳關。"
+
+  - name: code_review_and_optimization
+    description: "針對現有代碼進行底層邏輯掃描與性能優化審查。"
+    trigger:
+      intents: ["review_code", "audit_architecture", "optimize_performance"]
+    execution_sequence:
+      - step: 1
+        action: "execute_skill"
+        target: "check-division"
+        purpose: "掃描並替換軟體除法。"
+      - step: 2
+        action: "execute_skill"
+        target: "safety-scan"
+        purpose: "驗證 EALLOW/EDIS 與型態安全。"
+      - step: 3
+        action: "ast_analysis"
+        target: "blocking_loops"
+        purpose: "消除 while 阻塞。"
+    assertions:
+      - condition: "executed('check-division') and executed('safety-scan')"
+        on_fail:
+          action: "abort_review"
+          inject_context: "必須優先調用指定 Skill 工具執行確定性驗證。"
+
+  - name: commit_preparation
+    description: "生成 Conventional Commits 提交訊息。"
+    trigger:
+      intents: ["prepare_commit", "stage_changes", "git_commit"]
+    execution_sequence:
+      - step: 1
+        action: "execute_terminal_command"
+        command: "git diff --staged"
+        purpose: "抓取真實變更。"
+      - step: 2
+        action: "format_output"
+        format: "conventional_commits"
+        language: "zh-TW"
+        purpose: "生成架構描述提交。"
+    assertions:
+      - condition: "is_conventional_commit()"
+        on_fail:
+          action: "abort_commit"
+          inject_context: "[🚨 提交審核失敗]：生成的 Commit 訊息必須嚴格符合 Conventional Commits 格式規範。"
+
+  - name: specify
+    description: "需求定義階段 (Phase 1)。絕對禁止生成程式碼，強制讀取底層硬體 Context 並以 EARS 構文輸出規格。"
+    trigger:
+      intents: ["/specify", "define_requirements"]
+    execution_sequence:
+      - step: 1
+        action: "parse_files"
+        targets: ["device/device.c", "device/device.h"]
+        purpose: "讀取系統時脈 (SYSCLK) 與腳位等底層硬體上下文 (Context)。"
+      - step: 2
+        action: "generate_artifact"
+        format: "EARS_syntax"
+        purpose: "確保 AI 與人類工程師之間的認知對齊，消除幻覺與誤差。"
+    assertions:
+      - condition: "not generates_code()"
+        on_fail:
+          action: "abort_generation"
+          inject_context: "Phase 1 絕對禁止 AI 生成任何程式碼。"
+
+  - name: design
+    description: "技術設計階段 (Phase 2)。介面契約優先，僅能輸出 .h 標頭檔，強制觸發 TRM 暫存器搜尋與 DriverLib 函式原型查詢。"
+    trigger:
+      intents: ["/design", "technical_design"]
+    execution_sequence:
+      - step: 1
+        action: "execute_skill"
+        target: "query_trm.py"
+        purpose: "查詢官方 TRM PDF，確保暫存器位址與位元欄位基於物理證據。"
+      - step: 2
+        action: "execute_skill"
+        target: "query_driverlib.py"
+        purpose: "查詢本地 C2000Ware DriverLib 原始碼，確認函式原型、參數型別與 Doxygen 說明。"
+      - step: 3
+        action: "generate_artifact"
+        format: "header_file_only"
+        purpose: "整合 TRM 與 DriverLib 雙重證據，產出 .h 標頭檔作為 API 契約。"
+    assertions:
+      - condition: "executed('query_trm.py') and executed('query_driverlib.py')"
+        on_fail:
+          action: "abort_generation"
+          inject_context: "Phase 2 必須先執行 TRM 與 DriverLib 雙重查詢，確認物理證據後方可生成標頭檔。"
+      - condition: "only_generates_files_with_extension('.h')"
+        on_fail:
+          action: "abort_generation"
+          inject_context: "Phase 2 必須優先且僅能輸出 .h 標頭檔。"
+
+  - name: implement
+    description: "實作與沙盒檢驗階段 (Phase 3)。生成 _preview.c，強制自檢迴圈，並等待人類 Approve。"
+    trigger:
+      intents: ["/implement", "implementation"]
+    execution_sequence:
+      - step: 1
+        action: "generate_artifact"
+        target_suffix: "_preview.c"
+        purpose: "生成沙盒預覽代碼，鎖定本尊檔案的寫入權限。"
+      - step: 2
+        action: "execute_skill"
+        target: "check-division"
+        purpose: "執行約束條件檢驗 (例如除法違規)。"
+    assertions:
+      - condition: "executed('check-division')"
+        on_fail:
+          action: "abort_implementation"
+          inject_context: "必須成功執行除法安全性掃描 (check-division) 以驗證零除法約束。"
+      - condition: "has_human_approval()"
+        on_fail:
+          action: "freeze_write_permission"
+          inject_context: "必須由人類工程師給予最終的 Approve (承認)，才允許覆寫正式專案代碼。"
+
+  - name: verify
+    description: "硬體驗證階段 (Phase 4)。嚴禁推測，強制要求物理性證據；Git 推送必須由人類工程師明確授權执行。"
+    trigger:
+      intents: ["/verify", "hardware_verification"]
+    execution_sequence:
+      - step: 1
+        action: "request_user_input"
+        purpose: "要求提供「物理性的證據 (Evidence)」，如示波器波形或底層暫存器 Log 記錄。"
+      - step: 2
+        action: "present_git_commands_for_human_execution"
+        purpose: "驗證通過後，生成 Conventional Commits 訊息與 git add/commit/push 指令，提供工程師直接複製執行。不自動執行任何 git 指令。"
+    assertions:
+      - condition: "has_physical_evidence()"
+        on_fail:
+          action: "trigger_workflow"
+          target: "design"
+          inject_context: "嚴禁推測 (No Guessing)，驗證失敗或缺乏物理證據時，必須退回 design 階段重構設計。"
+      - condition: "has_human_push_approval()"
+        on_fail:
+          action: "freeze_push_permission"
+          inject_context: "Git 推送為不可逆操作，必須由人類工程師明確授權後方可執行。Agent 僅提供指令供工程師手動執行。"

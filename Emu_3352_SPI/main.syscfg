@@ -1,0 +1,139 @@
+/**
+ * These arguments were used when this file was generated. They will be automatically applied on subsequent loads
+ * via the GUI or CLI. Run CLI with '--help' for additional information on how to override these arguments.
+ * @cliArgs --board "/boards/TMDSCNCD28388D" --device "F2838x" --part "F2838x_337bga" --package "337bga" --context "CPU1" --product "C2000WARE@5.04.00.00"
+ * @v2CliArgs --device "TMS320F28388D" --package "337bga" --board "/boards/TMDSCNCD28388D" --context "CPU1" --product "C2000WARE@5.04.00.00"
+ * @versions {"tool":"1.21.0+3721"}
+ */
+
+/**
+ * Import the modules used in this configuration.
+ */
+const led            = scripting.addModule("/driverlib/board_components/led", {}, false);
+const led1           = led.addInstance();
+const led2           = led.addInstance();
+const cputimer       = scripting.addModule("/driverlib/cputimer.js", {}, false);
+const cputimer1      = cputimer.addInstance();
+const device_support = scripting.addModule("/driverlib/device_support.js");
+const epwm           = scripting.addModule("/driverlib/epwm.js", {}, false);
+const epwm1          = epwm.addInstance();
+const memcfg         = scripting.addModule("/driverlib/memcfg.js");
+const spi            = scripting.addModule("/driverlib/spi.js", {}, false);
+const spi1           = spi.addInstance();
+const spi2           = spi.addInstance();
+const sysctl         = scripting.addModule("/driverlib/sysctl.js");
+const CMD            = scripting.addModule("/utilities/cmd_tool/cmd_syscfg/source/CMD");
+const CMD1           = CMD.addInstance();
+const CMD2           = CMD.addInstance();
+
+/**
+ * Write custom configuration values to the imported modules.
+ */
+led1.$name     = "myBoardLED0";
+led1.$hardware = system.deviceData.board.components.D1;
+
+led2.$name     = "myBoardLED1";
+led2.$hardware = system.deviceData.board.components.D2;
+
+const divider11       = system.clockTree["LOSPCP"];
+divider11.divideValue = 1;
+
+const multiplier2         = system.clockTree["PLL_IMULT"];
+multiplier2.multiplyValue = 40;
+
+const mux18       = system.clockTree["XTAL_OR_X1"];
+mux18.inputSelect = "XTAL";
+
+const pinFunction3     = system.clockTree["XTAL"];
+pinFunction3.XTAL_Freq = 20;
+
+cputimer1.$name          = "SWTIRMER";
+cputimer1.timerPrescaler = 3;
+cputimer1.emulationMode  = "CPUTIMER_EMULATIONMODE_RUNFREE";
+cputimer1.timerPeriod    = 50000000;
+cputimer1.startTimer     = true;
+
+epwm1.$name            = "MEAS_CNV";
+epwm1.useCase          = "CUSTOM";
+epwm1.useInterfacePins = ["EPWM#A"];
+epwm1.$hardware        = system.deviceData.board.components.PWM_LOC1;
+
+spi1.$name          = "mySPI0";
+spi1.$hardware      = system.deviceData.board.components.SPI_LOC1;
+spi1.mode           = "SPI_MODE_CONTROLLER";
+spi1.useInterrupts  = false;
+spi1.bitRate        = 12500000;
+spi1.picoQual.$name = "myGPIOQUAL0";
+spi1.pociQual.$name = "myGPIOQUAL1";
+spi1.clkQual.$name  = "myGPIOQUAL2";
+spi1.pteQual.$name  = "myGPIOQUAL3";
+
+spi2.$name            = "SPIB_SYSTEM";
+spi2.mode             = "SPI_MODE_PERIPHERAL";
+spi2.useInterrupts    = false;
+spi2.useHSMode        = true;
+spi2.bitRate          = 12500000;
+spi2.dataWidth        = "16";
+spi2.transferProtocol = "SPI_PROT_POL0PHA0";
+spi2.spi.$assign      = "SPIB";
+spi2.picoQual.$name   = "myGPIOQUAL4";
+spi2.pociQual.$name   = "myGPIOQUAL5";
+spi2.clkQual.$name    = "myGPIOQUAL6";
+spi2.pteQual.$name    = "myGPIOQUAL7";
+
+CMD1.$name                    = "generic_ram_lnk";
+CMD1.sectionMemory_text       = ["RAMGS1","RAMLS0","RAMLS1","RAMLS2","RAMLS3","RAMLS4"];
+CMD1.sectionMemory_ramfunc    = ["RAMM0"];
+CMD1.sectionMemory_cinit      = ["RAMM0"];
+CMD1.sectionMemory_stack      = ["RAMM1"];
+CMD1.sectionMemory_init_array = ["RAMM0"];
+CMD1.sectionMemory_bss        = ["RAMGS0","RAMLS5"];
+CMD1.sectionMemory_const      = ["RAMLS5"];
+CMD1.sectionMemory_data       = ["RAMLS5"];
+CMD1.sectionMemory_switch     = ["RAMM0"];
+CMD1.sectionMemory_sysmem     = ["RAMLS5"];
+
+CMD2.$name                               = "generic_flash_lnk";
+CMD2.sectionAlignEnable_ramfunc          = true;
+CMD2.sectionAlignEnable_text             = true;
+CMD2.sectionAlignEnable_binit            = true;
+CMD2.sectionAlignEnable_cinit            = true;
+CMD2.sectionAlignEnable_switch           = true;
+CMD2.sectionAlignEnable_init_array       = true;
+CMD2.sectionAlignEnable_const            = true;
+CMD2.sectionAlignEnable_ovly             = true;
+CMD2.sectionMemory_codestart             = "0x080000";
+CMD2.sectionMemory_stack                 = ["RAMM1"];
+CMD2.sectionMemory_bss                   = ["RAMGS0","RAMLS5"];
+CMD2.sectionMemory_data                  = ["RAMLS5"];
+CMD2.sectionMemory_sysmem                = ["RAMLS5"];
+CMD2.sectionMemory_ramfunc               = ["FLASH3"];
+CMD2.sectionMemory_text                  = ["FLASH1","FLASH2","FLASH3","FLASH4"];
+CMD2.sectionMemory_binit                 = ["FLASH4"];
+CMD2.sectionMemory_cinit                 = ["FLASH4"];
+CMD2.sectionMemory_switch                = ["FLASH1"];
+CMD2.sectionMemory_init_array            = ["FLASH1"];
+CMD2.sectionMemory_const                 = ["FLASH5"];
+CMD2.sectionMemory_ovly                  = ["FLASH6"];
+CMD2.sectionRunFromDifferentAddr_ramfunc = true;
+CMD2.sectionRun_ramfunc                  = ["RAMLS0"];
+CMD2.sectionBinit_ramfunc                = false;
+
+/**
+ * Pinmux solution for unlocked pins/peripherals. This ensures that minor changes to the automatic solver in a future
+ * version of the tool will not impact the pinmux you originally saw.  These lines can be completely deleted in order to
+ * re-solve from scratch.
+ */
+led1.gpio.gpioPin.$suggestSolution    = "hsecDigital.82";
+led2.gpio.gpioPin.$suggestSolution    = "hsecDigital.86";
+epwm1.epwm.$suggestSolution           = "EPWM1";
+epwm1.epwm.epwm_aPin.$suggestSolution = "hsecDigital.49";
+spi1.spi.$suggestSolution             = "SPIA";
+spi1.spi.spi_picoPin.$suggestSolution = "hsecDigital.67";
+spi1.spi.spi_pociPin.$suggestSolution = "hsecDigital.69";
+spi1.spi.spi_clkPin.$suggestSolution  = "hsecDigital.71";
+spi1.spi.spi_ptePin.$suggestSolution  = "hsecDigital.73";
+spi2.spi.spi_picoPin.$suggestSolution = "GPIO63";
+spi2.spi.spi_pociPin.$suggestSolution = "GPIO64";
+spi2.spi.spi_clkPin.$suggestSolution  = "GPIO65";
+spi2.spi.spi_ptePin.$suggestSolution  = "GPIO66";

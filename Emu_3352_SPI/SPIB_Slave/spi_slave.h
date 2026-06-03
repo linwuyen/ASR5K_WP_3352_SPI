@@ -80,6 +80,9 @@ typedef ST_SPI_SLAVE * HAL_SPI_SLAVE;
 
 extern ST_SPI_SLAVE spiB_slave;
 extern volatile uint16_t g_u16SpiBlockRam[SIZE_OF_SPI_BLOCK_RAM];
+extern volatile uint16_t OUTPUT_ON;
+extern volatile uint32_t g_u32DebugLastTx;
+extern volatile uint32_t g_u32DebugLastValidResponse;
 extern void runSPIBslave(void);
 
 #endif /* SPI_SLAVE_H_ */

@@ -75,7 +75,7 @@ static inline void pushNullIntoTxD(HAL_WR_PARSER hal)
 }
 
 
-extern uint16_t OUTPUT_ON;
+extern volatile uint16_t OUTPUT_ON;
 // -----------------------------------------------------------------------------
 // [Agent Optimized]: STUB implementation for rapid porting without errors
 // -----------------------------------------------------------------------------

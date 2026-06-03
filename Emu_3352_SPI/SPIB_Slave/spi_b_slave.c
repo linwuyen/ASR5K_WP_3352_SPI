@@ -12,7 +12,7 @@
 #include "common.h"
 #include "shareram.h"  // after driverlib so float32_t is already defined
 
-uint16_t OUTPUT_ON;
+volatile uint16_t OUTPUT_ON = 0U;
 
 // ============================================================================
 // 64-bit Dual-Track Experimental FSM & Global Monitor Definitions
@@ -37,6 +37,7 @@ volatile float g_f32SlaveRxTestVal = 0.0f;
 
 // Global debug variables
 volatile uint32_t g_u32DebugLastTx = 0U;
+volatile uint32_t g_u32DebugLastValidResponse = 0U;
 static ST_WR_PARSER s_sSpiParser = DEFAULT_WR_PARSER;
 
 #pragma DATA_SECTION(g_u16SpiBlockRam, "spib_block_ram")
@@ -94,6 +95,10 @@ void initNativeSpiSlave(uint32_t u32Base)
 // Physical transmit split API: split 32-bit into two 16-bit words and write to FIFO
 int16_t wr32bitsToSpi(HAL_U32PACK pHalPack) {
     g_u32DebugLastTx = pHalPack->u32All;
+    if (pHalPack->u16Address != 0xFFFFU)
+    {
+        g_u32DebugLastValidResponse = pHalPack->u32All;
+    }
 
     SPI_writeDataNonBlocking(SPIB_SYSTEM_BASE, (uint16_t)(pHalPack->u32All >> 16));
     SPI_writeDataNonBlocking(SPIB_SYSTEM_BASE, (uint16_t)(pHalPack->u32All & 0xFFFF));
@@ -149,6 +154,7 @@ static inline void writeDirectSpiResponse(uint16_t u16Address, uint16_t u16Data)
     uint16_t u16RespAddr = (uint16_t)(u16Address + calcSpiByteChecksum(u16Data));
 
     g_u32DebugLastTx = ((uint32_t)u16RespAddr << 16) | u16Data;
+    g_u32DebugLastValidResponse = g_u32DebugLastTx;
     SPI_writeDataNonBlocking(SPIB_SYSTEM_BASE, u16RespAddr);
     SPI_writeDataNonBlocking(SPIB_SYSTEM_BASE, u16Data);
 }

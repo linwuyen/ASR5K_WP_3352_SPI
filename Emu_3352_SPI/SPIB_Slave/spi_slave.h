@@ -8,6 +8,7 @@
 #ifndef SPI_SLAVE_H_
 #define SPI_SLAVE_H_
 
+#include <stdbool.h>
 #include "cmd_parser.h"
 
 typedef enum {
@@ -31,6 +32,18 @@ typedef enum {
 
 #define SIZE_OF_SSS_BUFFER     64
 #define SIZE_OF_SPI_BLOCK_RAM  4095U
+#define SPIB_RX_REG_WORDS      2U
+
+#define SPIB_RX_ERR_DMA_DONE_TIMEOUT 0x0001U
+#define SPIB_RX_ERR_RX_FIFO_OVERFLOW 0x0002U
+#define SPIB_RX_ERR_DMA_ERROR        0x0004U
+#define SPIB_RX_ERR_FRAME_PARSE_FAIL 0x0008U
+
+typedef struct
+{
+    uint16_t cmd;
+    uint16_t data;
+} SpibRegFrame;
 
 typedef enum {
     FLASH_COMMIT_IDLE = 0,
@@ -56,7 +69,6 @@ typedef volatile struct {
     /* Diagnostic fields */
     uint32_t u32ResetCount;
     uint32_t u32MaxRcnt;
-    uint32_t u32U64TimeoutCount;
     uint16_t u16LastRcntBeforeReset;
 
     /* Fast/block direct path diagnostics */
@@ -80,9 +92,21 @@ typedef ST_SPI_SLAVE * HAL_SPI_SLAVE;
 
 extern ST_SPI_SLAVE spiB_slave;
 extern volatile uint16_t g_u16SpiBlockRam[SIZE_OF_SPI_BLOCK_RAM];
+extern volatile uint16_t gSpibRxRegFrame[SPIB_RX_REG_WORDS];
+extern volatile bool gSpibRxRegFrameReady;
+extern volatile uint32_t gSpibRxDmaDoneCount;
+extern volatile uint32_t gSpibRxParseOkCount;
+extern volatile uint32_t gSpibRxParseFailCount;
+extern volatile uint32_t gSpibRxDmaRestartCount;
+extern volatile uint16_t gSpibRxErrorFlags;
 extern volatile uint16_t OUTPUT_ON;
 extern volatile uint32_t g_u32DebugLastTx;
 extern volatile uint32_t g_u32DebugLastValidResponse;
+extern bool SPIB_RxDmaIsDone(void);
+extern void SPIB_RxDmaClearDone(void);
+extern void SPIB_RxDmaRestart(void);
+extern void SPIB_RxDmaResetDebugCounters(void);
+extern bool SPIB_ParseRegFrame(uint16_t u16Cmd, uint16_t u16Data);
 extern void runSPIBslave(void);
 
 #endif /* SPI_SLAVE_H_ */

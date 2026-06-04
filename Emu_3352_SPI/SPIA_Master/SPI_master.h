@@ -29,6 +29,7 @@ typedef float    f32;
 #define SPI_STRESS_BUFFER_SIZE 2U
 #define SPI_SEQ_BUFFER_SIZE 17U
 #define SPI_SINE_TABLE_SIZE 4095U
+#define SPI_RAW_FRAME_STRESS_COUNT 1000U
 
 typedef enum {
   SPI_CMD_IDLE = 0,
@@ -56,14 +57,27 @@ typedef enum {
   SPI_APP_STATE_BLOCK_WRITE,
   SPI_APP_STATE_BLOCK_READ,
   SPI_APP_STATE_BLOCK_WR_RD,
-  SPI_APP_STATE_POLL_SLAVE
+  SPI_APP_STATE_POLL_SLAVE,
+  SPI_APP_STATE_RAW_FRAME_STRESS
 } SPI_APP_STATE_e;
 
 typedef enum {
-  SPI_TEST_CMD_IDLE = 0,
-  SPI_TEST_CMD_TRIGGER,
-  SPI_TEST_CMD_RUNNING
-} SPI_TEST_CMD_STATE_e;
+  SPI_MASTER_TEST_CMD_NONE = 0,
+  SPI_MASTER_TEST_CMD_WRITE,
+  SPI_MASTER_TEST_CMD_READ,
+  SPI_MASTER_TEST_CMD_SEQ_WRITE_16,
+  SPI_MASTER_TEST_CMD_WAVE_4095,
+  SPI_MASTER_TEST_CMD_SINE_4095,
+  SPI_MASTER_TEST_CMD_REG_FRAME_1000
+} SPI_MASTER_TEST_CMD_e;
+
+typedef enum {
+  SPI_MASTER_TEST_IDLE = 0,
+  SPI_MASTER_TEST_TRIGGER,
+  SPI_MASTER_TEST_RUNNING,
+  SPI_MASTER_TEST_DONE,
+  SPI_MASTER_TEST_ERROR
+} SPI_MASTER_TEST_STATE_e;
 
 // ============================================================================
 // Data Structures
@@ -94,7 +108,7 @@ typedef struct {
   u16 bNullSent;
   u16 bFirstDiscarded;
   u16 bLoop;
-  u16 u16WaveMode; /* 0=trapezoid (idx+1)*16, 1=sine table */
+  u16 u16WaveMode; /* 0=trapezoid (idx+1)*16, 1=sine table prepared on trigger */
   pfSpiBlockCallback pfCallback;
 } ST_SPI_BLOCK_TRANSFER;
 
@@ -122,11 +136,10 @@ typedef struct {
 typedef struct {
   u16 u16TestAddr;
   u16 u16TestData;
-  SPI_TEST_CMD_STATE_e u16CmdWrite;
-  SPI_TEST_CMD_STATE_e u16CmdRead;
-  SPI_TEST_CMD_STATE_e u16CmdSeqWriteTest;
-  SPI_TEST_CMD_STATE_e u16CmdWave4095Test;
-  SPI_TEST_CMD_STATE_e u16CmdSineWave4095Test;
+  SPI_MASTER_TEST_CMD_e eTestCmd;
+  SPI_MASTER_TEST_STATE_e eTestState;
+  SPI_MASTER_TEST_CMD_e eLastTestCmd;
+  u16 u16LastResult;
 
   u16 u16StressEnable;
   u32 u32StressPassCnt;
@@ -141,6 +154,11 @@ typedef struct {
   u32 u32PollTimer;
   u32 u32PollTimeoutCnt;
   u16 bPollPending;
+
+  u16 u16RawFrameTarget;
+  u16 u16RawFrameIndex;
+  u16 u16RawFrameAddr;
+  u16 u16RawFrameLastData;
 } ST_SPI_APP;
 
 typedef struct {
@@ -177,6 +195,7 @@ typedef struct {
 } ST_SPI_MASTER_CONTROL;
 
 extern ST_SPI_MASTER_CONTROL spiA_master;
+extern volatile u16 g_u16SpiMasterWaveRam[SPI_SINE_TABLE_SIZE];
 
 // ============================================================================
 // Fixed SPIA Wrapper APIs
@@ -257,7 +276,7 @@ u16 writeBlockSpiMaster(ST_SPI_MASTER *pstInst,
 
 /**
  * @brief Start a generated 4095-point waveform plus Block End transfer
- * @param u16WaveMode 0 for ramp/trapezoid test data, 1 for sine table
+ * @param u16WaveMode 0 for ramp/trapezoid test data, 1 for sine table prepared on trigger
  */
 u16 writeWaveBlockSpiMaster(ST_SPI_MASTER *pstInst,
                             u16 u16WaveMode,

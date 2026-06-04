@@ -168,12 +168,4 @@ static inline void parseRemoteCommand(HAL_WR_PARSER hal)
     }
 }
 
-#ifdef SPI_ENABLE_U64_TEST
-/* -----------------------------------------------------------------------
- * [64-bit Experimental] Direct Reception and Processing (No Queue Pollution)
- * ----------------------------------------------------------------------- */
-
-/* Echo back exactly 4 x 16-bit words back to master via TX FIFO */
-#endif /* SPI_ENABLE_U64_TEST */
-
 #endif

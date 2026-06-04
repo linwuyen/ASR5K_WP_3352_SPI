@@ -8,37 +8,35 @@
 
 #include "driverlib.h"
 #include "device.h"
+#include "inc/hw_spi.h"
 #include "spi_slave.h"
 #include "common.h"
 #include "shareram.h"  // after driverlib so float32_t is already defined
 
-volatile uint16_t OUTPUT_ON = 0U;
+volatile uint16_t OUTPUT_ON;
 
-// ============================================================================
-// 64-bit Dual-Track Experimental FSM & Global Monitor Definitions
-// (0us Blocking Yield-Polling Core)
-// ============================================================================
-#ifdef SPI_ENABLE_U64_TEST
-typedef enum {
-    RX_STATE_IDLE = 0,
-    RX_STATE_WAIT_U64_BODY
-} E_RX_STATE;
+#pragma DATA_SECTION(gSpibRxRegFrame, "spib_slave_state")
+#pragma DATA_ALIGN(gSpibRxRegFrame, 2)
+volatile uint16_t gSpibRxRegFrame[SPIB_RX_REG_WORDS];
+volatile bool gSpibRxRegFrameReady;
 
-static E_RX_STATE s_eRxState = RX_STATE_IDLE;
-static uint16_t s_u16HighHeader = 0U;
-static uint32_t s_u32RxTimeoutCnt = 0U;
-
-// Slave RX timeout threshold (prevents permanent hang due to packet loss)
-#define SLAVE_RX_TIMEOUT_LIMIT  100000U
-
-// Inspect in CCS Expressions to verify 64-bit float is atomically saved into slave memory
-volatile float g_f32SlaveRxTestVal = 0.0f;
-#endif /* SPI_ENABLE_U64_TEST */
+#pragma DATA_SECTION(gSpibRxDmaDoneCount, "spib_slave_state")
+volatile uint32_t gSpibRxDmaDoneCount;
+#pragma DATA_SECTION(gSpibRxParseOkCount, "spib_slave_state")
+volatile uint32_t gSpibRxParseOkCount;
+#pragma DATA_SECTION(gSpibRxParseFailCount, "spib_slave_state")
+volatile uint32_t gSpibRxParseFailCount;
+#pragma DATA_SECTION(gSpibRxDmaRestartCount, "spib_slave_state")
+volatile uint32_t gSpibRxDmaRestartCount;
+#pragma DATA_SECTION(gSpibRxErrorFlags, "spib_slave_state")
+volatile uint16_t gSpibRxErrorFlags;
 
 // Global debug variables
-volatile uint32_t g_u32DebugLastTx = 0U;
-volatile uint32_t g_u32DebugLastValidResponse = 0U;
-static ST_WR_PARSER s_sSpiParser = DEFAULT_WR_PARSER;
+volatile uint32_t g_u32DebugLastTx;
+volatile uint32_t g_u32DebugLastValidResponse;
+static ST_WR_PARSER s_sSpiParser;
+static bool s_bSpibRxDmaArmed = false;
+static uint32_t s_u32SpibRxDmaArmTicks = 0U;
 
 #pragma DATA_SECTION(g_u16SpiBlockRam, "spib_block_ram")
 volatile uint16_t g_u16SpiBlockRam[SIZE_OF_SPI_BLOCK_RAM];
@@ -50,6 +48,10 @@ volatile uint16_t g_u16SpiBlockRam[SIZE_OF_SPI_BLOCK_RAM];
 #define SPI_BLOCK_STATUS_OVERFLOW  0x8000U
 #define SPI_BLOCK_STATUS_ERROR     0x8001U
 
+#define SPIB_RX_DMA_CH_BASE        DMA_CH3_BASE
+#define SPIB_RX_DMA_TIMEOUT_TICKS  T_2MS
+
+#pragma DATA_SECTION(spiB_slave, "spib_slave_state")
 ST_SPI_SLAVE spiB_slave = {
     .fsm = _INIT_SPI_AS_SLAVE,
     .stat = _NO_STAT_OF_SSS,
@@ -70,6 +72,18 @@ ST_SPI_SLAVE spiB_slave = {
 // ============================================================================
 static uint32_t s_u32LastRxTicks = 0U;
 static bool s_bSpiClean = false; // Initialize to false so we perform a reset 2ms after boot to clear startup noise
+
+static uint32_t getElapsedTicks(uint32_t u32StartTicks)
+{
+    uint32_t u32Now = U32_UPCNTS;
+
+    if (u32Now >= u32StartTicks)
+    {
+        return (u32Now - u32StartTicks);
+    }
+
+    return ((SW_TIMER - u32StartTicks) + u32Now);
+}
 
 // ============================================================================
 // Private Helper Initialization & Physical Layer Interface
@@ -92,6 +106,90 @@ void initNativeSpiSlave(uint32_t u32Base)
     SPI_resetRxFIFO(u32Base);
 }
 
+static void initSpibRxDma(void)
+{
+    uint16_t *pSrcAddr = (uint16_t *)(SPIB_SYSTEM_BASE + SPI_O_RXBUF);
+    uint16_t *pDstAddr = (uint16_t *)&gSpibRxRegFrame[0];
+
+    gSpibRxRegFrame[0] = 0U;
+    gSpibRxRegFrame[1] = 0U;
+    gSpibRxRegFrameReady = false;
+    s_bSpibRxDmaArmed = false;
+
+    DMA_disableTrigger(SPIB_RX_DMA_CH_BASE);
+    DMA_disableInterrupt(SPIB_RX_DMA_CH_BASE);
+    DMA_stopChannel(SPIB_RX_DMA_CH_BASE);
+    DMA_clearTriggerFlag(SPIB_RX_DMA_CH_BASE);
+    DMA_clearErrorFlag(SPIB_RX_DMA_CH_BASE);
+
+    DMA_configAddresses(SPIB_RX_DMA_CH_BASE, pDstAddr, pSrcAddr);
+    DMA_configBurst(SPIB_RX_DMA_CH_BASE, SPIB_RX_REG_WORDS, 0, 1);
+    DMA_configTransfer(SPIB_RX_DMA_CH_BASE, 1U, 0, 0);
+    DMA_configMode(SPIB_RX_DMA_CH_BASE, DMA_TRIGGER_SPIBRX,
+                   DMA_CFG_ONESHOT_DISABLE |
+                   DMA_CFG_CONTINUOUS_DISABLE |
+                   DMA_CFG_SIZE_16BIT);
+    DMA_setEmulationMode(DMA_EMULATION_FREE_RUN);
+
+    /* RXFF interrupt is used only as the DMA trigger source; no SPIB RX ISR is registered/enabled. */
+    SPI_clearInterruptStatus(SPIB_SYSTEM_BASE, SPI_INT_RXFF | SPI_INT_RX_OVERRUN);
+    SPI_enableInterrupt(SPIB_SYSTEM_BASE, SPI_INT_RXFF);
+
+    DMA_enableTrigger(SPIB_RX_DMA_CH_BASE);
+    DMA_startChannel(SPIB_RX_DMA_CH_BASE);
+    s_bSpibRxDmaArmed = true;
+    s_u32SpibRxDmaArmTicks = U32_UPCNTS;
+}
+
+bool SPIB_RxDmaIsDone(void)
+{
+    if (s_bSpibRxDmaArmed == false)
+    {
+        return false;
+    }
+
+    return (DMA_getRunStatusFlag(SPIB_RX_DMA_CH_BASE) == false);
+}
+
+void SPIB_RxDmaClearDone(void)
+{
+    gSpibRxRegFrameReady = false;
+    DMA_clearTriggerFlag(SPIB_RX_DMA_CH_BASE);
+    DMA_clearErrorFlag(SPIB_RX_DMA_CH_BASE);
+    SPI_clearInterruptStatus(SPIB_SYSTEM_BASE, SPI_INT_RXFF | SPI_INT_RX_OVERRUN);
+}
+
+void SPIB_RxDmaRestart(void)
+{
+    uint16_t *pSrcAddr = (uint16_t *)(SPIB_SYSTEM_BASE + SPI_O_RXBUF);
+    uint16_t *pDstAddr = (uint16_t *)&gSpibRxRegFrame[0];
+
+    gSpibRxDmaRestartCount++;
+    gSpibRxRegFrameReady = false;
+    DMA_disableTrigger(SPIB_RX_DMA_CH_BASE);
+    DMA_stopChannel(SPIB_RX_DMA_CH_BASE);
+    DMA_clearTriggerFlag(SPIB_RX_DMA_CH_BASE);
+    DMA_clearErrorFlag(SPIB_RX_DMA_CH_BASE);
+
+    DMA_configAddresses(SPIB_RX_DMA_CH_BASE, pDstAddr, pSrcAddr);
+    DMA_configBurst(SPIB_RX_DMA_CH_BASE, SPIB_RX_REG_WORDS, 0, 1);
+    DMA_configTransfer(SPIB_RX_DMA_CH_BASE, 1U, 0, 0);
+
+    DMA_enableTrigger(SPIB_RX_DMA_CH_BASE);
+    DMA_startChannel(SPIB_RX_DMA_CH_BASE);
+    s_bSpibRxDmaArmed = true;
+    s_u32SpibRxDmaArmTicks = U32_UPCNTS;
+}
+
+void SPIB_RxDmaResetDebugCounters(void)
+{
+    gSpibRxDmaDoneCount = 0U;
+    gSpibRxParseOkCount = 0U;
+    gSpibRxParseFailCount = 0U;
+    gSpibRxDmaRestartCount = 0U;
+    gSpibRxErrorFlags = 0U;
+}
+
 // Physical transmit split API: split 32-bit into two 16-bit words and write to FIFO
 int16_t wr32bitsToSpi(HAL_U32PACK pHalPack) {
     g_u32DebugLastTx = pHalPack->u32All;
@@ -109,40 +207,6 @@ int16_t wr32bitsToSpi(HAL_U32PACK pHalPack) {
 int16_t rd32bitsFromSpi(HAL_U32PACK pHalPack) {
     return 4;
 }
-
-#ifdef SPI_ENABLE_U64_TEST
-static inline void parseU64PackDirect(uint16_t u16Word0, uint16_t u16Word1, uint16_t u16Word2, uint16_t u16Word3)
-{
-    uint16_t u16Header = u16Word0;  /* Word 1: addr | 0x8000 */
-    uint16_t u16Low    = u16Word1;  /* Word 2: float low 16 bits */
-    uint16_t u16High   = u16Word2;  /* Word 3: float high 16 bits */
-    uint16_t u16Chk    = u16Word3;  /* Word 4: checksum */
-
-    /* Atomic lossless reconstruction of float32 */
-    uint32_t u32Raw    = ((uint32_t)u16High << 16) | u16Low;
-    volatile float f32Val = *(float*)&u32Raw;
-
-    /* If target address matches 64-bit test register 0x09F0U, write to slave observation variable */
-    uint16_t u16AddrOnly = u16Header & 0x7FFFU;
-    if (u16AddrOnly == 0x09F0U)
-    {
-        g_f32SlaveRxTestVal = f32Val;
-    }
-
-    /* Calculate Byte-sum checksum */
-    uint16_t u16ChkCalc = (uint16_t)( (u32Raw        & 0xFFU)
-                                    + ((u32Raw >>  8) & 0xFFU)
-                                    + ((u32Raw >> 16) & 0xFFU)
-                                    + ((u32Raw >> 24) & 0xFFU) );
-    (void)u16Chk;
-
-    /* Echo the received value back 100% identically */
-    SPI_writeDataNonBlocking(SPIB_SYSTEM_BASE, (uint16_t)(u16Header & 0x7FFFU));
-    SPI_writeDataNonBlocking(SPIB_SYSTEM_BASE, u16Low);
-    SPI_writeDataNonBlocking(SPIB_SYSTEM_BASE, u16High);
-    SPI_writeDataNonBlocking(SPIB_SYSTEM_BASE, u16ChkCalc);
-}
-#endif /* SPI_ENABLE_U64_TEST */
 
 static inline uint16_t calcSpiByteChecksum(uint16_t u16Data)
 {
@@ -286,6 +350,43 @@ static inline uint16_t tryHandleFastPath(uint16_t u16Address, uint16_t u16Data)
     return 1U;
 }
 
+bool SPIB_ParseRegFrame(uint16_t u16Cmd, uint16_t u16Data)
+{
+    s_u32LastRxTicks = U32_UPCNTS;
+    s_bSpiClean = false;
+
+    if (tryHandleFastPath(u16Cmd, u16Data) == 1U)
+    {
+        return true;
+    }
+
+    spiB_slave.u32FallbackPathCount++;
+    if (SIZE_OF_SSS_BUFFER > spiB_slave.u16Rcnt)
+    {
+        spiB_slave.u32RxD[spiB_slave.u16Rpush].u32All =
+            ((uint32_t)u16Cmd << 16) | u16Data;
+
+        spiB_slave.u16Rpush++;
+        if (SIZE_OF_SSS_BUFFER == spiB_slave.u16Rpush)
+        {
+            spiB_slave.u16Rpush = 0U;
+        }
+
+        spiB_slave.u16Rcnt++;
+        if (spiB_slave.u16Rcnt > spiB_slave.u32MaxRcnt)
+        {
+            spiB_slave.u32MaxRcnt = spiB_slave.u16Rcnt;
+        }
+
+        return true;
+    }
+    else
+    {
+        spiB_slave.stat |= _SSS_GET_ERROR;
+        return false;
+    }
+}
+
 // ============================================================================
 // Background Flash Commit Simulation (0us Non-blocking FSM)
 // ============================================================================
@@ -344,6 +445,7 @@ void initSPIslave(void)
     uint16_t u16Idx;
 
     initNativeSpiSlave(SPIB_SYSTEM_BASE);
+    initSpibRxDma();
 
     /* Initialize block RAM to zero to prevent startup garbage noise */
     for (u16Idx = 0U; u16Idx < SIZE_OF_SPI_BLOCK_RAM; u16Idx++)
@@ -362,7 +464,6 @@ void initSPIslave(void)
     /* Diagnostic fields initialization */
     spiB_slave.u32ResetCount = 0U;
     spiB_slave.u32MaxRcnt = 0U;
-    spiB_slave.u32U64TimeoutCount = 0U;
     spiB_slave.u16LastRcntBeforeReset = 0U;
     spiB_slave.u32FastPathCount = 0U;
     spiB_slave.u32FallbackPathCount = 0U;
@@ -384,158 +485,67 @@ void initSPIslave(void)
 
 void pollReceiveFromSpi(void)
 {
-     uint16_t u16LoopCnt = 0U;
+     uint32_t u32SpiIntStatus = SPI_getInterruptStatus(SPIB_SYSTEM_BASE);
 
-#ifdef SPI_ENABLE_U64_TEST
-     // Slave 64-bit status timeout monitor
-     if (s_eRxState == RX_STATE_WAIT_U64_BODY)
+     if ((u32SpiIntStatus & (SPI_INT_RX_OVERRUN | SPI_INT_RXFF_OVERFLOW)) != 0U)
      {
-         s_u32RxTimeoutCnt++;
-         if (s_u32RxTimeoutCnt > SLAVE_RX_TIMEOUT_LIMIT)
-         {
-             spiB_slave.u32U64TimeoutCount++;
-             spiB_slave.u16LastRcntBeforeReset = spiB_slave.u16Rcnt;
-             // Perform full hardware SPI reset on timeout to restore alignment
-             SPI_disableModule(SPIB_SYSTEM_BASE);
-             SPI_enableModule(SPIB_SYSTEM_BASE);
-             SPI_resetRxFIFO(SPIB_SYSTEM_BASE);
-             SPI_resetTxFIFO(SPIB_SYSTEM_BASE);
-             pushNullIntoTxD(&s_sSpiParser);
-             s_eRxState = RX_STATE_IDLE;
-             s_u32RxTimeoutCnt = 0U;
-             spiB_slave.stat |= _SSS_GET_ERROR;
-             return;
-         }
+         gSpibRxErrorFlags |= SPIB_RX_ERR_RX_FIFO_OVERFLOW;
+         spiB_slave.stat |= _SSS_GET_ERROR;
+         SPIB_RxDmaClearDone();
+         SPI_resetRxFIFO(SPIB_SYSTEM_BASE);
+         SPIB_RxDmaRestart();
+         return;
      }
-#endif /* SPI_ENABLE_U64_TEST */
 
-     // State 1: IDLE - detect header and dispatch to appropriate path
-     // Bounded loop: Max hardware FIFO depth is 16 words (8 packets of 32-bit/2-word)
-     for (u16LoopCnt = 0U; u16LoopCnt < 8U; u16LoopCnt++)
+     if (DMA_getOverflowFlag(SPIB_RX_DMA_CH_BASE))
      {
-         if (SPI_getRxFIFOStatus(SPIB_SYSTEM_BASE) < SPI_FIFO_RX2)
+         gSpibRxErrorFlags |= SPIB_RX_ERR_DMA_ERROR;
+         spiB_slave.stat |= _SSS_GET_ERROR;
+         SPIB_RxDmaClearDone();
+         SPIB_RxDmaRestart();
+         return;
+     }
+
+     if ((SPI_getRxFIFOStatus(SPIB_SYSTEM_BASE) > SPI_FIFO_RXEMPTY) &&
+         (getElapsedTicks(s_u32SpibRxDmaArmTicks) > SPIB_RX_DMA_TIMEOUT_TICKS))
+     {
+         gSpibRxErrorFlags |= SPIB_RX_ERR_DMA_DONE_TIMEOUT;
+         spiB_slave.stat |= _SSS_GET_ERROR;
+         SPIB_RxDmaClearDone();
+         SPI_resetRxFIFO(SPIB_SYSTEM_BASE);
+         SPIB_RxDmaRestart();
+         return;
+     }
+
+     if (SPIB_RxDmaIsDone())
+     {
+         uint16_t u16Cmd;
+         uint16_t u16Data;
+         bool bParseOk;
+
+         gSpibRxRegFrameReady = true;
+         gSpibRxDmaDoneCount++;
+
+         u16Cmd = gSpibRxRegFrame[0];
+         u16Data = gSpibRxRegFrame[1];
+
+         bParseOk = SPIB_ParseRegFrame(u16Cmd, u16Data);
+         if (bParseOk)
          {
-             break;
-         }
-
-#ifdef SPI_ENABLE_U64_TEST
-         if (s_eRxState != RX_STATE_IDLE)
-         {
-             break;
-         }
-#endif
-
-         // Update activity ticks
-         s_u32LastRxTicks = U32_UPCNTS;
-         s_bSpiClean = false;
-
-#ifdef SPI_ENABLE_U64_TEST
-         if (s_eRxState == RX_STATE_IDLE)
-         {
-             /* Read Word 1 for high-frequency filtering */
-             s_u16HighHeader = SPI_readDataNonBlocking(SPIB_SYSTEM_BASE);
-
-             if ((s_u16HighHeader & 0x8000U) && ((s_u16HighHeader & 0x7FFFU) == 0x09F0U))
-             {
-                 /* Detected 64-bit characteristic flag (bit15=1 and address=0x09F0): transition state, exit immediately, 0us CPU blocking overhead */
-                 s_eRxState = RX_STATE_WAIT_U64_BODY;
-                 s_u32RxTimeoutCnt = 0U;
-                 return;
-             }
-
-             /* Production 32-bit standard packet processing path */
-             uint16_t u16Low = SPI_readDataNonBlocking(SPIB_SYSTEM_BASE);
-
-             if (tryHandleFastPath(s_u16HighHeader, u16Low) == 1U)
-             {
-                 continue;
-             }
-
-             spiB_slave.u32FallbackPathCount++;
-             if (SIZE_OF_SSS_BUFFER > spiB_slave.u16Rcnt)
-             {
-                 spiB_slave.u32RxD[spiB_slave.u16Rpush].u32All = ((uint32_t)s_u16HighHeader << 16) | u16Low;
-                 spiB_slave.u16Rpush++;
-                 if (SIZE_OF_SSS_BUFFER == spiB_slave.u16Rpush)  spiB_slave.u16Rpush = 0;
-                 spiB_slave.u16Rcnt++;
-                 if (spiB_slave.u16Rcnt > spiB_slave.u32MaxRcnt)
-                 {
-                     spiB_slave.u32MaxRcnt = spiB_slave.u16Rcnt;
-                 }
-             }
-             else
-             {
-                 (void)SPI_readDataNonBlocking(SPIB_SYSTEM_BASE);
-                 spiB_slave.stat |= _SSS_GET_ERROR;
-             }
-         }
-#else
-         /* Production-only 32-bit native path (no branching, maximum performance) */
-         if (SIZE_OF_SSS_BUFFER > spiB_slave.u16Rcnt)
-         {
-             uint16_t u16High = SPI_readDataNonBlocking(SPIB_SYSTEM_BASE);
-             uint16_t u16Low = SPI_readDataNonBlocking(SPIB_SYSTEM_BASE);
-
-             if (tryHandleFastPath(u16High, u16Low) == 1U)
-             {
-                 continue;
-             }
-
-             spiB_slave.u32FallbackPathCount++;
-             spiB_slave.u32RxD[spiB_slave.u16Rpush].u32All = ((uint32_t)u16High << 16) | u16Low;
-
-             spiB_slave.u16Rpush++;
-             if (SIZE_OF_SSS_BUFFER == spiB_slave.u16Rpush)  spiB_slave.u16Rpush = 0;
-             spiB_slave.u16Rcnt++;
-             if (spiB_slave.u16Rcnt > spiB_slave.u32MaxRcnt)
-             {
-                 spiB_slave.u32MaxRcnt = spiB_slave.u16Rcnt;
-             }
+             gSpibRxParseOkCount++;
          }
          else
          {
-             (void)SPI_readDataNonBlocking(SPIB_SYSTEM_BASE);
-             (void)SPI_readDataNonBlocking(SPIB_SYSTEM_BASE);
-             spiB_slave.stat |= _SSS_GET_ERROR;
+             gSpibRxParseFailCount++;
+             gSpibRxErrorFlags |= SPIB_RX_ERR_FRAME_PARSE_FAIL;
          }
-#endif /* SPI_ENABLE_U64_TEST */
+
+         SPIB_RxDmaClearDone();
+         SPIB_RxDmaRestart();
      }
-
-#ifdef SPI_ENABLE_U64_TEST
-     // State 2: Non-blocking yield waiting for remaining 3 words of 64-bit packet
-     if (s_eRxState == RX_STATE_WAIT_U64_BODY)
-     {
-         if (SPI_getRxFIFOStatus(SPIB_SYSTEM_BASE) >= 3U)
-         {
-             // Update activity ticks
-             s_u32LastRxTicks = U32_UPCNTS;
-             s_bSpiClean = false;
-
-             uint16_t u16Low   = SPI_readDataNonBlocking(SPIB_SYSTEM_BASE);
-             uint16_t u16Word2 = SPI_readDataNonBlocking(SPIB_SYSTEM_BASE);
-             uint16_t u16Word3 = SPI_readDataNonBlocking(SPIB_SYSTEM_BASE);
-
-             /* All 3 words received, parse directly in background without polluting 32-bit software ring buffer */
-             parseU64PackDirect(s_u16HighHeader, u16Low, u16Word2, u16Word3);
-
-             // Return to IDLE state
-             s_eRxState = RX_STATE_IDLE;
-             s_u32RxTimeoutCnt = 0U;
-         }
-     }
-#endif /* SPI_ENABLE_U64_TEST */
 
      // Silence timeout auto-recovery
-     uint32_t u32Now = U32_UPCNTS;
-     uint32_t u32Elapsed;
-     if (u32Now >= s_u32LastRxTicks)
-     {
-         u32Elapsed = u32Now - s_u32LastRxTicks;
-     }
-     else
-     {
-         u32Elapsed = (SW_TIMER - s_u32LastRxTicks) + u32Now;
-     }
+     uint32_t u32Elapsed = getElapsedTicks(s_u32LastRxTicks);
 
      if (u32Elapsed > T_2MS)
      {
@@ -550,14 +560,11 @@ void pollReceiveFromSpi(void)
              SPI_resetTxFIFO(SPIB_SYSTEM_BASE);
              SPI_clearInterruptStatus(SPIB_SYSTEM_BASE, SPI_INT_RX_OVERRUN);
              pushNullIntoTxD(&s_sSpiParser);
+             SPIB_RxDmaRestart();
 
              // Clear error flag during silence reset recovery
              spiB_slave.stat &= ~_SSS_GET_ERROR;
 
-#ifdef SPI_ENABLE_U64_TEST
-             s_eRxState = RX_STATE_IDLE;
-             s_u32RxTimeoutCnt = 0U;
-#endif
              s_bSpiClean = true;
          }
      }

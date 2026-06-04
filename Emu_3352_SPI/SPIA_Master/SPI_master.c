@@ -19,6 +19,7 @@
 #define WAIT_SLAVE_TICKS 1000U    // 20us slave delay under 50MHz SW_TIMER
 #define WAIT_IDLE_TICKS  1000U    // 20us inter-packet guard band under 50MHz SW_TIMER
 #define SPI_TIMEOUT_LIMIT 250000U // 5ms anti-deadlock timeout threshold
+#define SPI_RAW_FRAME_STRESS_ADDR Output_ON_OFF_spi_addr
 
 // ============================================================================
 // Global Master Control and Private Aliases
@@ -27,14 +28,17 @@ static ST_SPI_MASTER_PACKET s_astStressTxBuf[SPI_STRESS_BUFFER_SIZE];
 static ST_SPI_MASTER_PACKET s_astStressRxBuf[SPI_STRESS_BUFFER_SIZE];
 static ST_SPI_MASTER_PACKET s_astSeqTxBuf[SPI_SEQ_BUFFER_SIZE];
 static ST_SPI_MASTER_PACKET s_astSeqRxBuf[SPI_SEQ_BUFFER_SIZE];
-static u16 s_au16SineTable[SPI_SINE_TABLE_SIZE];
+static u16 s_u16SineTableReady;
+
+#pragma DATA_SECTION(g_u16SpiMasterWaveRam, "spia_master_wave_ram")
+volatile u16 g_u16SpiMasterWaveRam[SPI_SINE_TABLE_SIZE];
 
 ST_SPI_MASTER_CONTROL spiA_master = {
   .pastStressTxBuf = s_astStressTxBuf,
   .pastStressRxBuf = s_astStressRxBuf,
   .pastSeqTxBuf = s_astSeqTxBuf,
   .pastSeqRxBuf = s_astSeqRxBuf,
-  .pau16SineTable = s_au16SineTable,
+  .pau16SineTable = (u16 *)g_u16SpiMasterWaveRam,
 };
 
 #define s_stSpiMaster    spiA_master.stDriver
@@ -99,11 +103,11 @@ void recoverSpiMaster(ST_SPI_MASTER *pstInst) {
 
   s_stSpiApp.bPollPending = 0U;
   s_stSpiApp.eState = SPI_APP_STATE_IDLE;
-  s_stSpiApp.u16CmdRead = SPI_TEST_CMD_IDLE;
-  s_stSpiApp.u16CmdWrite = SPI_TEST_CMD_IDLE;
-  s_stSpiApp.u16CmdSeqWriteTest = SPI_TEST_CMD_IDLE;
-  s_stSpiApp.u16CmdWave4095Test = SPI_TEST_CMD_IDLE;
-  s_stSpiApp.u16CmdSineWave4095Test = SPI_TEST_CMD_IDLE;
+  if (s_stSpiApp.eTestState == SPI_MASTER_TEST_TRIGGER ||
+      s_stSpiApp.eTestState == SPI_MASTER_TEST_RUNNING) {
+    s_stSpiApp.eTestState = SPI_MASTER_TEST_ERROR;
+    s_stSpiApp.eLastTestCmd = s_stSpiApp.eTestCmd;
+  }
 
   s_stSpiDiag.u16ConsecutiveSuccess = 0U;
   pstInst->eState = SPI_CMD_WAIT_IDLE;
@@ -116,22 +120,20 @@ static void onBlockWriteComplete(void);
 static void onBlockReadComplete(void);
 static void onBlockWrRdComplete(void);
 static void onPollSlaveComplete(u16 u16RxAddr, u16 u16RxData);
+static void drainSpiMasterRxFifo(u32 u32BaseAddr);
+static void prepareSineTable(void);
 
 // ============================================================================
 // Public Driver API Implementations
 // ============================================================================
 
 void initSpiMasterApp(void) {
-  u16 u16Idx;
-  f32 f32Step = 6.28318530f / (f32)SPI_SINE_TABLE_SIZE;
-
   s_stSpiApp.u16TestAddr = 0x0400U;
   s_stSpiApp.u16TestData = 0x1234U;
-  s_stSpiApp.u16CmdWrite = SPI_TEST_CMD_IDLE;
-  s_stSpiApp.u16CmdRead = SPI_TEST_CMD_IDLE;
-  s_stSpiApp.u16CmdSeqWriteTest = SPI_TEST_CMD_IDLE;
-  s_stSpiApp.u16CmdWave4095Test = SPI_TEST_CMD_IDLE;
-  s_stSpiApp.u16CmdSineWave4095Test = SPI_TEST_CMD_IDLE;
+  s_stSpiApp.eTestCmd = SPI_MASTER_TEST_CMD_NONE;
+  s_stSpiApp.eTestState = SPI_MASTER_TEST_IDLE;
+  s_stSpiApp.eLastTestCmd = SPI_MASTER_TEST_CMD_NONE;
+  s_stSpiApp.u16LastResult = 0U;
   s_stSpiApp.u16StressEnable = 0U;
   s_stSpiApp.u32StressPassCnt = 0U;
   s_stSpiApp.u32StressFailCnt = 0U;
@@ -143,15 +145,11 @@ void initSpiMasterApp(void) {
   s_stSpiApp.u32PollTimer = 0U;
   s_stSpiApp.u32PollTimeoutCnt = 0U;
   s_stSpiApp.bPollPending = 0U;
-
-  for (u16Idx = 0U; u16Idx < SPI_SINE_TABLE_SIZE; u16Idx++) {
-    f32 f32Phase = (f32)u16Idx * f32Step;
-    f32 f32Val = 2047.5f + 2047.5f * sinf(f32Phase);
-    if (f32Val > 4095.0f) {
-      f32Val = 4095.0f;
-    }
-    s_au16SineTable[u16Idx] = (u16)f32Val;
-  }
+  s_stSpiApp.u16RawFrameTarget = SPI_RAW_FRAME_STRESS_COUNT;
+  s_stSpiApp.u16RawFrameIndex = 0U;
+  s_stSpiApp.u16RawFrameAddr = SPI_RAW_FRAME_STRESS_ADDR;
+  s_stSpiApp.u16RawFrameLastData = 0U;
+  s_u16SineTableReady = 0U;
 }
 
 void initSpiMaster(ST_SPI_MASTER *pstInst, u32 u32SpiBaseAddr) {
@@ -292,6 +290,11 @@ u16 writeWaveBlockSpiMaster(ST_SPI_MASTER *pstInst,
   if (writeBlockSpiMaster(pstInst, 0, 0, 4096U, pfCb) == 0U) {
     return 0U;
   }
+
+  if (u16WaveMode == 1U) {
+    prepareSineTable();
+  }
+
   pstInst->stBlockTx.u16WaveMode = u16WaveMode;
   return 1U;
 }
@@ -427,7 +430,7 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
             if (u16Idx < SPI_SINE_TABLE_SIZE) {
               u16ExpTxAddr = (u16)(Spi_Block_Data_Base_spi_addr + u16Idx);
               if (pstInst->stBlockTx.u16WaveMode == 1U) {
-                u16ExpTxData = s_au16SineTable[u16Idx];
+                u16ExpTxData = g_u16SpiMasterWaveRam[u16Idx];
               } else {
                 u16ExpTxData = (u16)((u16Idx + 1U) * 16U);
               }
@@ -496,7 +499,7 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
               if (u16Idx < SPI_SINE_TABLE_SIZE) {
                 u16TxAddr = (u16)(Spi_Block_Data_Base_spi_addr + u16Idx);
                 if (pstInst->stBlockTx.u16WaveMode == 1U) {
-                  u16TxData = s_au16SineTable[u16Idx];
+                  u16TxData = g_u16SpiMasterWaveRam[u16Idx];
                 } else {
                   u16TxData = (u16)((u16Idx + 1U) * 16U);
                 }
@@ -560,44 +563,82 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
 void runSpiMasterApp(ST_SPI_MASTER *pstInst) {
   switch (s_stSpiApp.eState) {
   case SPI_APP_STATE_IDLE:
-    if (s_stSpiApp.u16CmdWrite == SPI_TEST_CMD_TRIGGER) {
-      if (writeSpiMaster(pstInst, s_stSpiApp.u16TestAddr, s_stSpiApp.u16TestData, onManualWriteComplete) == 1U) {
-        s_stSpiApp.u16CmdWrite = SPI_TEST_CMD_RUNNING;
-        s_stSpiApp.eState = SPI_APP_STATE_SINGLE_WRITE;
-      }
-    } else if (s_stSpiApp.u16CmdRead == SPI_TEST_CMD_TRIGGER) {
-      if (readSpiMaster(pstInst, s_stSpiApp.u16TestAddr, onManualReadComplete) == 1U) {
-        s_stSpiApp.u16CmdRead = SPI_TEST_CMD_RUNNING;
-        s_stSpiApp.eState = SPI_APP_STATE_SINGLE_READ;
-      }
-    } else if (s_stSpiApp.u16CmdSeqWriteTest == SPI_TEST_CMD_TRIGGER) {
-      u16 u16Idx;
-      for (u16Idx = 0U; u16Idx < 16U; u16Idx++) {
-        s_astSeqTxBuf[u16Idx].stPack.u16Address = (u16)(Spi_Block_Data_Base_spi_addr + u16Idx);
-        s_astSeqTxBuf[u16Idx].stPack.u16Data = (u16)((u16Idx + 1U) * 0x1111U);
-      }
-      s_astSeqTxBuf[16].stPack.u16Address = Spi_Block_End_spi_addr;
-      s_astSeqTxBuf[16].stPack.u16Data = 16U;
+    if (s_stSpiApp.eTestState == SPI_MASTER_TEST_TRIGGER) {
+      switch (s_stSpiApp.eTestCmd) {
+      case SPI_MASTER_TEST_CMD_WRITE:
+        if (writeSpiMaster(pstInst, s_stSpiApp.u16TestAddr, s_stSpiApp.u16TestData, onManualWriteComplete) == 1U) {
+          s_stSpiApp.eLastTestCmd = s_stSpiApp.eTestCmd;
+          s_stSpiApp.eTestState = SPI_MASTER_TEST_RUNNING;
+          s_stSpiApp.eState = SPI_APP_STATE_SINGLE_WRITE;
+        }
+        break;
 
-      if (writeBlockSpiMaster(pstInst, s_astSeqTxBuf, s_astSeqRxBuf, 17U, onBlockWriteComplete) == 1U) {
-        pstInst->stBlockTx.bLoop = 0U;
-        s_stSpiApp.u16CmdSeqWriteTest = SPI_TEST_CMD_RUNNING;
-        s_stSpiApp.eState = SPI_APP_STATE_BLOCK_WRITE;
+      case SPI_MASTER_TEST_CMD_READ:
+        if (readSpiMaster(pstInst, s_stSpiApp.u16TestAddr, onManualReadComplete) == 1U) {
+          s_stSpiApp.eLastTestCmd = s_stSpiApp.eTestCmd;
+          s_stSpiApp.eTestState = SPI_MASTER_TEST_RUNNING;
+          s_stSpiApp.eState = SPI_APP_STATE_SINGLE_READ;
+        }
+        break;
+
+      case SPI_MASTER_TEST_CMD_SEQ_WRITE_16: {
+        u16 u16Idx;
+        for (u16Idx = 0U; u16Idx < 16U; u16Idx++) {
+          s_astSeqTxBuf[u16Idx].stPack.u16Address = (u16)(Spi_Block_Data_Base_spi_addr + u16Idx);
+          s_astSeqTxBuf[u16Idx].stPack.u16Data = (u16)((u16Idx + 1U) * 0x1111U);
+        }
+        s_astSeqTxBuf[16].stPack.u16Address = Spi_Block_End_spi_addr;
+        s_astSeqTxBuf[16].stPack.u16Data = 16U;
+
+        if (writeBlockSpiMaster(pstInst, s_astSeqTxBuf, s_astSeqRxBuf, 17U, onBlockWriteComplete) == 1U) {
+          pstInst->stBlockTx.bLoop = 0U;
+          s_stSpiApp.eLastTestCmd = s_stSpiApp.eTestCmd;
+          s_stSpiApp.eTestState = SPI_MASTER_TEST_RUNNING;
+          s_stSpiApp.eState = SPI_APP_STATE_BLOCK_WRITE;
+        }
+      } break;
+
+      case SPI_MASTER_TEST_CMD_WAVE_4095:
+        if (writeWaveBlockSpiMaster(pstInst, 0U, onBlockWriteComplete) == 1U) {
+          pstInst->stBlockTx.bLoop = 0U;
+          s_stSpiApp.eLastTestCmd = s_stSpiApp.eTestCmd;
+          s_stSpiApp.eTestState = SPI_MASTER_TEST_RUNNING;
+          s_stSpiApp.eState = SPI_APP_STATE_BLOCK_WRITE;
+        }
+        break;
+
+      case SPI_MASTER_TEST_CMD_SINE_4095:
+        if (writeWaveBlockSpiMaster(pstInst, 1U, onBlockWriteComplete) == 1U) {
+          pstInst->stBlockTx.bLoop = 0U;
+          s_stSpiApp.eLastTestCmd = s_stSpiApp.eTestCmd;
+          s_stSpiApp.eTestState = SPI_MASTER_TEST_RUNNING;
+          s_stSpiApp.eState = SPI_APP_STATE_BLOCK_WRITE;
+        }
+        break;
+
+      case SPI_MASTER_TEST_CMD_REG_FRAME_1000:
+        if ((pstInst->eState == SPI_CMD_IDLE) && (pstInst->u16QCount == 0U)) {
+          SPI_resetRxFIFO(pstInst->u32SpiBaseAddr);
+          SPI_resetTxFIFO(pstInst->u32SpiBaseAddr);
+          s_stSpiApp.u16RawFrameTarget = SPI_RAW_FRAME_STRESS_COUNT;
+          s_stSpiApp.u16RawFrameIndex = 0U;
+          s_stSpiApp.u16RawFrameAddr = SPI_RAW_FRAME_STRESS_ADDR;
+          s_stSpiApp.u16RawFrameLastData = 0U;
+          s_stSpiApp.eLastTestCmd = s_stSpiApp.eTestCmd;
+          s_stSpiApp.eTestState = SPI_MASTER_TEST_RUNNING;
+          s_stSpiApp.u16LastResult = 0U;
+          s_stSpiApp.eState = SPI_APP_STATE_RAW_FRAME_STRESS;
+          pstInst->u32TimeoutCnt = 0U;
+        }
+        break;
+
+      default:
+        s_stSpiApp.eTestState = SPI_MASTER_TEST_ERROR;
+        s_stSpiApp.u16LastResult = 0U;
+        break;
       }
-    } else if (s_stSpiApp.u16CmdWave4095Test == SPI_TEST_CMD_TRIGGER) {
-      if (writeWaveBlockSpiMaster(pstInst, 0U, onBlockWriteComplete) == 1U) {
-        pstInst->stBlockTx.bLoop = 0U;
-        s_stSpiApp.u16CmdWave4095Test = SPI_TEST_CMD_RUNNING;
-        s_stSpiApp.eState = SPI_APP_STATE_BLOCK_WRITE;
-      }
-    } else if (s_stSpiApp.u16CmdSineWave4095Test == SPI_TEST_CMD_TRIGGER) {
-      if (writeWaveBlockSpiMaster(pstInst, 1U, onBlockWriteComplete) == 1U) {
-        pstInst->stBlockTx.bLoop = 0U;
-        s_stSpiApp.u16CmdSineWave4095Test = SPI_TEST_CMD_RUNNING;
-        s_stSpiApp.eState = SPI_APP_STATE_BLOCK_WRITE;
-      }
-    }
-    else if (s_stSpiApp.u16StressEnable == 1U) {
+    } else if ((s_stSpiApp.eTestState == SPI_MASTER_TEST_IDLE) &&
+               (s_stSpiApp.u16StressEnable == 1U)) {
       u16 u16Len = s_stSpiApp.u16StressLength;
       if ((u16Len == 0U) || (u16Len > 4095U)) {
         u16Len = 2U;
@@ -644,6 +685,45 @@ void runSpiMasterApp(ST_SPI_MASTER *pstInst) {
   case SPI_APP_STATE_BLOCK_WR_RD:
     break;
 
+  case SPI_APP_STATE_RAW_FRAME_STRESS:
+    drainSpiMasterRxFifo(pstInst->u32SpiBaseAddr);
+
+    if (s_stSpiApp.u16RawFrameIndex < s_stSpiApp.u16RawFrameTarget) {
+      if (!SPI_isBusy(pstInst->u32SpiBaseAddr)) {
+        u16 u16Data = s_stSpiApp.u16RawFrameIndex;
+
+        SPI_writeDataNonBlocking(pstInst->u32SpiBaseAddr, s_stSpiApp.u16RawFrameAddr);
+        SPI_writeDataNonBlocking(pstInst->u32SpiBaseAddr, u16Data);
+        s_stSpiApp.u16RawFrameLastData = u16Data;
+        s_stSpiApp.u16RawFrameIndex++;
+        s_stSpiApp.u16LastResult = s_stSpiApp.u16RawFrameIndex;
+        s_stSpiDiag.u32TotalTxCount++;
+        pstInst->u32TimeoutCnt = 0U;
+      } else {
+        pstInst->u32TimeoutCnt++;
+      }
+
+      if (pstInst->u32TimeoutCnt > SPI_TIMEOUT_LIMIT) {
+        s_stSpiApp.u32StressFailCnt++;
+        s_stSpiApp.eTestState = SPI_MASTER_TEST_ERROR;
+        s_stSpiApp.u16LastResult = s_stSpiApp.u16RawFrameIndex;
+        s_stSpiDiag.u16LastErrType = 7U;
+        s_stSpiDiag.u16LastErrStep = s_stSpiApp.eState;
+        s_stSpiDiag.u16LastErrRxAddr = s_stSpiApp.u16RawFrameAddr;
+        s_stSpiDiag.u16LastErrRxData = s_stSpiApp.u16RawFrameLastData;
+        s_stSpiDiag.u16LastErrExpAddr = s_stSpiApp.u16RawFrameAddr;
+        s_stSpiDiag.u16LastErrExpData = s_stSpiApp.u16RawFrameTarget;
+        recoverSpiMaster(pstInst);
+      }
+    } else if (!SPI_isBusy(pstInst->u32SpiBaseAddr)) {
+      drainSpiMasterRxFifo(pstInst->u32SpiBaseAddr);
+      s_stSpiApp.u32StressPassCnt += s_stSpiApp.u16RawFrameTarget;
+      s_stSpiApp.eTestState = SPI_MASTER_TEST_DONE;
+      s_stSpiApp.u16LastResult = s_stSpiApp.u16RawFrameIndex;
+      s_stSpiApp.eState = SPI_APP_STATE_IDLE;
+    }
+    break;
+
   case SPI_APP_STATE_POLL_SLAVE:
     if (s_stSpiApp.bPollPending == 0U) {
       u32 u32Elapsed;
@@ -688,12 +768,9 @@ void runSpiMasterApp(ST_SPI_MASTER *pstInst) {
 
     if (s_stSpiApp.bPollPending == 0U) {
       if (s_stSpiApp.u16PollState == SPI_BLOCK_STATUS_READY) {
-        if (s_stSpiApp.u16CmdSeqWriteTest == SPI_TEST_CMD_RUNNING) {
-          s_stSpiApp.u16CmdSeqWriteTest = SPI_TEST_CMD_IDLE;
-        } else if (s_stSpiApp.u16CmdWave4095Test == SPI_TEST_CMD_RUNNING) {
-          s_stSpiApp.u16CmdWave4095Test = SPI_TEST_CMD_IDLE;
-        } else if (s_stSpiApp.u16CmdSineWave4095Test == SPI_TEST_CMD_RUNNING) {
-          s_stSpiApp.u16CmdSineWave4095Test = SPI_TEST_CMD_IDLE;
+        if (s_stSpiApp.eTestState == SPI_MASTER_TEST_RUNNING) {
+          s_stSpiApp.eTestState = SPI_MASTER_TEST_DONE;
+          s_stSpiApp.u16LastResult = s_stSpiApp.u16PollState;
         } else {
           s_stSpiApp.u32StressPassCnt += pstInst->stBlockTx.u16Length;
         }
@@ -705,6 +782,10 @@ void runSpiMasterApp(ST_SPI_MASTER *pstInst) {
       } else if ((s_stSpiApp.u16PollState == SPI_BLOCK_STATUS_ERROR) || 
                  (s_stSpiApp.u16PollState == SPI_BLOCK_STATUS_OVERFLOW)) {
         s_stSpiApp.u32StressFailCnt++;
+        if (s_stSpiApp.eTestState == SPI_MASTER_TEST_RUNNING) {
+          s_stSpiApp.eTestState = SPI_MASTER_TEST_ERROR;
+          s_stSpiApp.u16LastResult = s_stSpiApp.u16PollState;
+        }
         s_stSpiDiag.u16LastErrType = 3U;
         s_stSpiDiag.u16LastErrStep = s_stSpiApp.eState;
         s_stSpiDiag.u16LastErrRxAddr = Spi_Block_Status_spi_addr;
@@ -732,10 +813,13 @@ static void onManualReadComplete(u16 u16RxAddr, u16 u16RxData) {
     if (s_stSpiDiag.u16ConsecutiveSuccess > s_stSpiDiag.u16MaxConsecutiveSuccess) {
       s_stSpiDiag.u16MaxConsecutiveSuccess = s_stSpiDiag.u16ConsecutiveSuccess;
     }
-    s_stSpiApp.u16CmdRead = SPI_TEST_CMD_IDLE;
+    s_stSpiApp.eTestState = SPI_MASTER_TEST_DONE;
+    s_stSpiApp.u16LastResult = u16RxData;
     s_stSpiApp.eState = SPI_APP_STATE_IDLE;
   } else {
     s_stSpiApp.u32StressFailCnt++;
+    s_stSpiApp.eTestState = SPI_MASTER_TEST_ERROR;
+    s_stSpiApp.u16LastResult = u16RxData;
     s_stSpiDiag.u16LastErrType = 3U;
     s_stSpiDiag.u16LastErrStep = s_stSpiApp.eState;
     s_stSpiDiag.u16LastErrRxAddr = u16RxAddr;
@@ -754,10 +838,13 @@ static void onManualWriteComplete(u16 u16RxAddr, u16 u16RxData) {
     if (s_stSpiDiag.u16ConsecutiveSuccess > s_stSpiDiag.u16MaxConsecutiveSuccess) {
       s_stSpiDiag.u16MaxConsecutiveSuccess = s_stSpiDiag.u16ConsecutiveSuccess;
     }
-    s_stSpiApp.u16CmdWrite = SPI_TEST_CMD_IDLE;
+    s_stSpiApp.eTestState = SPI_MASTER_TEST_DONE;
+    s_stSpiApp.u16LastResult = u16RxData;
     s_stSpiApp.eState = SPI_APP_STATE_IDLE;
   } else {
     s_stSpiApp.u32StressFailCnt++;
+    s_stSpiApp.eTestState = SPI_MASTER_TEST_ERROR;
+    s_stSpiApp.u16LastResult = u16RxData;
     s_stSpiDiag.u16LastErrType = 3U;
     s_stSpiDiag.u16LastErrStep = s_stSpiApp.eState;
     s_stSpiDiag.u16LastErrRxAddr = u16RxAddr;
@@ -908,6 +995,33 @@ static void onPollSlaveComplete(u16 u16RxAddr, u16 u16RxData) {
     s_stSpiApp.bPollPending = 0U;
     recoverSpiMaster(&s_stSpiMaster);
   }
+}
+
+static void drainSpiMasterRxFifo(u32 u32BaseAddr) {
+  while (SPI_getRxFIFOStatus(u32BaseAddr) > SPI_FIFO_RXEMPTY) {
+    SPI_readDataNonBlocking(u32BaseAddr);
+  }
+}
+
+static void prepareSineTable(void) {
+  u16 u16Idx;
+  f32 f32Step;
+
+  if (s_u16SineTableReady == 1U) {
+    return;
+  }
+
+  f32Step = 6.28318530f / (f32)SPI_SINE_TABLE_SIZE;
+  for (u16Idx = 0U; u16Idx < SPI_SINE_TABLE_SIZE; u16Idx++) {
+    f32 f32Phase = (f32)u16Idx * f32Step;
+    f32 f32Val = 2047.5f + 2047.5f * sinf(f32Phase);
+    if (f32Val > 4095.0f) {
+      f32Val = 4095.0f;
+    }
+    g_u16SpiMasterWaveRam[u16Idx] = (u16)f32Val;
+  }
+
+  s_u16SineTableReady = 1U;
 }
 
 void spiMasterTask(ST_SPI_MASTER *pstInst) {

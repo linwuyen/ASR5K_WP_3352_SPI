@@ -10,6 +10,7 @@
 #define SPI_MASTER_H_
 
 #include "cmd_id.h"
+#include "Diag/comm_diag.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -26,10 +27,13 @@ typedef float    f32;
 // Enums and Defines
 // ============================================================================
 #define SPI_TX_QUEUE_SIZE 8U
-#define SPI_STRESS_BUFFER_SIZE 2U
-#define SPI_SEQ_BUFFER_SIZE 17U
+#define SPI_STRESS_BUFFER_SIZE 3U
+#define SPI_SEQ_BUFFER_SIZE 18U
 #define SPI_SINE_TABLE_SIZE 4095U
+#define SPI_WAVE_BLOCK_TRANSFER_FRAMES (SPI_SINE_TABLE_SIZE + 2U)
 #define SPI_RAW_FRAME_STRESS_COUNT 1000U
+#define SPI_PACKET_HEADER_MAGIC 0xA55AU
+#define SPI_PACKET_PADDING_WORD 0x0000U
 
 typedef enum {
   SPI_CMD_IDLE = 0,
@@ -58,7 +62,8 @@ typedef enum {
   SPI_APP_STATE_BLOCK_READ,
   SPI_APP_STATE_BLOCK_WR_RD,
   SPI_APP_STATE_POLL_SLAVE,
-  SPI_APP_STATE_RAW_FRAME_STRESS
+  SPI_APP_STATE_RAW_FRAME_STRESS,
+  SPI_APP_STATE_PACKET_WRITE
 } SPI_APP_STATE_e;
 
 typedef enum {
@@ -68,7 +73,8 @@ typedef enum {
   SPI_MASTER_TEST_CMD_SEQ_WRITE_16,
   SPI_MASTER_TEST_CMD_WAVE_4095,
   SPI_MASTER_TEST_CMD_SINE_4095,
-  SPI_MASTER_TEST_CMD_REG_FRAME_1000
+  SPI_MASTER_TEST_CMD_REG_FRAME_1000,
+  SPI_MASTER_TEST_CMD_PACKET_WRITE
 } SPI_MASTER_TEST_CMD_e;
 
 typedef enum {
@@ -78,6 +84,20 @@ typedef enum {
   SPI_MASTER_TEST_DONE,
   SPI_MASTER_TEST_ERROR
 } SPI_MASTER_TEST_STATE_e;
+
+typedef enum {
+  SPI_TEST_STATUS_IDLE = 0,
+  SPI_TEST_STATUS_RUNNING,
+  SPI_TEST_STATUS_PASSED,
+  SPI_TEST_STATUS_FAILED
+} SPI_TEST_STATUS_e;
+
+typedef enum {
+  SPIA_MODULE_STATE_INIT = 0,
+  SPIA_MODULE_STATE_READY,
+  SPIA_MODULE_STATE_ACTIVE,
+  SPIA_MODULE_STATE_FAULT
+} SPIA_MODULE_STATE_e;
 
 // ============================================================================
 // Data Structures
@@ -161,21 +181,119 @@ typedef struct {
   u16 u16RawFrameLastData;
 } ST_SPI_APP;
 
+typedef enum {
+  SPIA_HEALTH_OK = 0,
+  SPIA_HEALTH_WARNING,
+  SPIA_HEALTH_FAULT
+} SPIA_HEALTH_e;
+
+typedef enum {
+  SPIA_FAULT_SOURCE_NONE = 0,
+  SPIA_FAULT_SOURCE_DRIVER,
+  SPIA_FAULT_SOURCE_PROTOCOL,
+  SPIA_FAULT_SOURCE_SERVICE
+} SPIA_FAULT_SOURCE_e;
+
+typedef enum {
+  SPIA_DRV_STATE_IDLE = 0,
+  SPIA_DRV_STATE_TX_RX,
+  SPIA_DRV_STATE_WAIT_ACK,
+  SPIA_DRV_STATE_WAIT_SLAVE,
+  SPIA_DRV_STATE_WAIT_DATA,
+  SPIA_DRV_STATE_WAIT_IDLE,
+  SPIA_DRV_STATE_BLOCK
+} SPIA_DRIVER_STATE_e;
+
+typedef enum {
+  SPIA_DRV_FAULT_NONE = 0,
+  SPIA_DRV_FAULT_ACK_TIMEOUT = 1,
+  SPIA_DRV_FAULT_DATA_TIMEOUT = 2,
+  SPIA_DRV_FAULT_DMA_ERROR = 3,
+  SPIA_DRV_FAULT_FIFO_OVERFLOW = 4,
+  SPIA_DRV_FAULT_BLOCK_TIMEOUT = 5
+} SPIA_DRIVER_FAULT_e;
+
+typedef enum {
+  SPIA_PROT_STATE_IDLE = 0,
+  SPIA_PROT_STATE_PARSING_HEADER,
+  SPIA_PROT_STATE_PARSING_PAYLOAD,
+  SPIA_PROT_STATE_VERIFYING
+} SPIA_PROTOCOL_STATE_e;
+
+typedef enum {
+  SPIA_PROT_FAULT_NONE = 0,
+  SPIA_PROT_FAULT_BAD_HEADER = 1,
+  SPIA_PROT_FAULT_BAD_LENGTH = 2,
+  SPIA_PROT_FAULT_CHECKSUM = 3,
+  SPIA_PROT_FAULT_UNSUPPORTED_CMD = 4,
+  SPIA_PROT_FAULT_PADDING = 5,
+  SPIA_PROT_FAULT_REG_PARSER = 6
+} SPIA_PROTOCOL_FAULT_e;
+
+typedef enum {
+  SPIA_SERV_STATE_IDLE = 0,
+  SPIA_SERV_STATE_BUSY,
+  SPIA_SERV_STATE_RECEIVING,
+  SPIA_SERV_STATE_COMMITTING,
+  SPIA_SERV_STATE_TEST_RUNNING
+} SPIA_SERVICE_STATE_e;
+
+typedef enum {
+  SPIA_SERV_FAULT_NONE = 0,
+  SPIA_SERV_FAULT_OUT_OF_SEQUENCE = 1,
+  SPIA_SERV_FAULT_LENGTH_MISMATCH = 2,
+  SPIA_SERV_FAULT_CHECKSUM_MISSING = 3,
+  SPIA_SERV_FAULT_CHECKSUM_MISMATCH = 4,
+  SPIA_SERV_FAULT_OVERFLOW = 5,
+  SPIA_SERV_FAULT_FLASH_COMMIT = 6,
+  SPIA_SERV_FAULT_POLL_TIMEOUT = 7,
+  SPIA_SERV_FAULT_STRESS_TIMEOUT = 8,
+  SPIA_SERV_FAULT_PACKET_TIMEOUT = 9
+} SPIA_SERVICE_FAULT_e;
+
 typedef struct {
-  u32 u32TotalTxCount;          /* Total transmitted transaction packets count */
-  u32 u32TotalRxCount;          /* Total received transaction packets count */
-  u16 u16LastErrType;           /* 0:None, 1:WAIT_ACK timeout, 2:WAIT_DATA timeout, 3:Callback/checksum mismatch */
-  u16 u16LastErrStep;           /* Current stress state machine step when error happened */
-  u16 u16LastErrRxAddr;         /* Mismatched/incorrect raw address received */
-  u16 u16LastErrRxData;         /* Mismatched/incorrect raw data received */
-  u16 u16LastErrExpAddr;        /* Expected address value */
-  u16 u16LastErrExpData;        /* Expected data value */
-  u16 u16ChecksumErrorCount;    /* Total checksum errors count */
-  u16 u16ConsecutiveSuccess;    /* Current continuous success count */
-  u16 u16MaxConsecutiveSuccess; /* Historical maximum consecutive success count */
-  u16 u16SelfTestStatus;        /* Self-test status (0:Not run, 1:Running, 2:Passed, 3:Failed) */
-  u16 u16SelfTestErrorCount;    /* Total errors occurred during loopback self-test */
-} ST_SPI_DIAG;
+  SPIA_DRIVER_STATE_e eState;
+  SPIA_DRIVER_FAULT_e eFault;
+  ST_COMM_DIAG stComm;
+} ST_SPIA_DRIVER_DIAG;
+
+typedef struct {
+  SPIA_PROTOCOL_STATE_e eState;
+  SPIA_PROTOCOL_FAULT_e eFault;
+  ST_COMM_DIAG stComm;
+} ST_SPIA_PROTOCOL_DIAG;
+
+typedef struct {
+  SPIA_SERVICE_STATE_e eState;
+  SPIA_SERVICE_FAULT_e eFault;
+  ST_COMM_DIAG stComm;
+} ST_SPIA_SERVICE_DIAG;
+
+typedef struct {
+  SPIA_HEALTH_e eHealth;
+  SPIA_FAULT_SOURCE_e eFaultSource;
+  u16 u16FaultCode;
+
+  ST_SPIA_DRIVER_DIAG stDriver;
+  ST_SPIA_PROTOCOL_DIAG stProtocol;
+  ST_SPIA_SERVICE_DIAG stService;
+} ST_SPIA_MODULE_DIAG;
+
+/*
+ * Formal test interface for firmware API and CCS Expressions.
+ * Set request fields, then set u16Start to 1. Firmware clears u16Start.
+ * Normal test operation only needs this structure.
+ */
+typedef struct {
+  SPI_MASTER_TEST_CMD_e eCommand;
+  u16 u16Address;
+  u16 u16Data;
+  u16 u16Start;
+
+  SPI_TEST_STATUS_e eStatus;
+  u16 u16Result;
+  u32 u32Detail;
+} ST_SPI_TEST_INTERFACE;
 
 /*
  * Single CCS Expressions entry point for all SPIA Master runtime state.
@@ -183,9 +301,10 @@ typedef struct {
  */
 typedef struct {
   SPIA_MASTER_FSM_e fsm;
+  volatile ST_SPI_TEST_INTERFACE stTest;
   ST_SPI_MASTER stDriver;
   ST_SPI_APP stApp;
-  ST_SPI_DIAG stDiag;
+  volatile ST_SPIA_MODULE_DIAG stDiag;
 
   ST_SPI_MASTER_PACKET *pastStressTxBuf;
   ST_SPI_MASTER_PACKET *pastStressRxBuf;
@@ -205,6 +324,29 @@ extern volatile u16 g_u16SpiMasterWaveRam[SPI_SINE_TABLE_SIZE];
  * @brief Initialize on first call, then run the global SPIA Master task
  */
 void runSPIAmaster(void);
+
+/**
+ * @brief Start one formal SPI communication test
+ * @return 1 when accepted, 0 when another test is active
+ */
+u16 startSPIAmasterTest(SPI_MASTER_TEST_CMD_e eCommand,
+                        u16 u16Address,
+                        u16 u16Data);
+
+#define clearSPIAmasterFault() do {                                      \
+  spiA_master.stDiag.eHealth = SPIA_HEALTH_OK;                           \
+  spiA_master.stDiag.eFaultSource = SPIA_FAULT_SOURCE_NONE;              \
+  spiA_master.stDiag.u16FaultCode = 0U;                                  \
+  spiA_master.stDiag.stDriver.eState = SPIA_DRV_STATE_IDLE;              \
+  spiA_master.stDiag.stDriver.eFault = SPIA_DRV_FAULT_NONE;              \
+  spiA_master.stDiag.stProtocol.eState = SPIA_PROT_STATE_IDLE;           \
+  spiA_master.stDiag.stProtocol.eFault = SPIA_PROT_FAULT_NONE;           \
+  spiA_master.stDiag.stService.eState = SPIA_SERV_STATE_IDLE;            \
+  spiA_master.stDiag.stService.eFault = SPIA_SERV_FAULT_NONE;            \
+  CommDiag_ClearLatch((ST_COMM_DIAG *)&spiA_master.stDiag.stDriver.stComm); \
+  CommDiag_ClearLatch((ST_COMM_DIAG *)&spiA_master.stDiag.stProtocol.stComm); \
+  CommDiag_ClearLatch((ST_COMM_DIAG *)&spiA_master.stDiag.stService.stComm); \
+} while (0)
 
 /**
  * @brief Enqueue a read request on the global SPIA Master
@@ -310,7 +452,7 @@ ST_SPI_APP *getSpiAppHandle(void);
 /**
  * @brief Get global Master Diag instance handle
  */
-ST_SPI_DIAG *getSpiDiagHandle(void);
+ST_SPIA_MODULE_DIAG *getSpiDiagHandle(void);
 
 // ============================================================================
 // Expanded Diagnostics & Self-Test APIs

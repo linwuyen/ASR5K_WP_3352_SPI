@@ -188,6 +188,7 @@
 #define Spi_Block_Write_Index_spi_addr              0x0708
 #define Spi_Block_CheckSum_spi_addr                 0x0709
 #define Spi_Block_Progress_spi_addr                 0x070A
+#define Spi_Block_Expected_CheckSum_spi_addr        0x070B
 
 
 // @ group: 0x0800

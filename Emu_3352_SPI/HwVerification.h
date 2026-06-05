@@ -9,6 +9,9 @@
 #include "device.h"
 #include "board.h"    // MUST include board.h BEFORE timetask.h for SWTIRMER_BASE
 #include "timetask.h" 
+#include "Diag/comm_diag.h"
+#include "SPIA_Master/SPI_master.h"
+#include "SPIB_Slave/spi_slave.h"
 
 // ==============================================================================
 // Hardware Test Structure
@@ -26,7 +29,8 @@ typedef struct {
     uint32_t u32Status;
     uint32_t u32Data;           // Merged variable for read results
     uint16_t u16Trigger;
-    uint16_t u16RxCount;
+    uint16_t u16RxCount;        /* Kept for Modbus register compatibility */
+    ST_COMM_DIAG stComm;        /* 引入通用診斷，鎖存 Flash 讀寫錯誤 */
 } ST_FLASH_DIAG;
 
 typedef struct {
@@ -44,6 +48,9 @@ typedef struct {
     uint16_t u16FsiStatus;
     ST_SDRAM_DIAG stSdram;
 
+    // SPI 模組診斷集中觀測點
+    ST_SPIA_MODULE_DIAG stSpiA;
+    ST_SPIB_MODULE_DIAG stSpiB;
 
     uint16_t u16SPIBLOOP;
 } ST_HWTEST;

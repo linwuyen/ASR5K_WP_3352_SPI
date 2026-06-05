@@ -51,7 +51,7 @@ void main(void) {
   C2000Ware_libraries_init();
 
   // Initialize the Slave before the Master can issue its first frame.
-  runSPIBslave();
+//  runSPIBslave();
 
   //
   // Enable Global Interrupt (INTM) and real time interrupt (DBGM)

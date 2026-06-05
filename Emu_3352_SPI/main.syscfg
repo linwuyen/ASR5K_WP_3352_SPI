@@ -63,6 +63,8 @@ spi1.$hardware      = system.deviceData.board.components.SPI_LOC1;
 spi1.mode           = "SPI_MODE_CONTROLLER";
 spi1.useInterrupts  = false;
 spi1.bitRate        = 12500000;
+spi1.dataWidth      = "16";
+spi1.transferProtocol = "SPI_PROT_POL0PHA0";
 spi1.picoQual.$name = "myGPIOQUAL0";
 spi1.pociQual.$name = "myGPIOQUAL1";
 spi1.clkQual.$name  = "myGPIOQUAL2";
@@ -82,7 +84,7 @@ spi2.clkQual.$name    = "myGPIOQUAL6";
 spi2.pteQual.$name    = "myGPIOQUAL7";
 
 CMD1.$name                    = "generic_ram_lnk";
-CMD1.sectionMemory_text       = ["RAMGS1","RAMLS0","RAMLS1","RAMLS2","RAMLS3","RAMLS4"];
+CMD1.sectionMemory_text       = ["RAMGS1","RAMGS2","RAMGS3","RAMLS0","RAMLS1","RAMLS2","RAMLS3","RAMLS4"];
 CMD1.sectionMemory_ramfunc    = ["RAMM0"];
 CMD1.sectionMemory_cinit      = ["RAMM0"];
 CMD1.sectionMemory_stack      = ["RAMM1"];

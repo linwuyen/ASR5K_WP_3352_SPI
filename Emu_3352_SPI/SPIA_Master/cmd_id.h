@@ -258,7 +258,10 @@
 
 // Block transmission & Polling definitions
 #define Spi_Block_Status_spi_addr                   0x0707
+#define Spi_Block_Write_Index_spi_addr              0x0708
+#define Spi_Block_CheckSum_spi_addr                 0x0709
 #define Spi_Block_Progress_spi_addr                 0x070A
+#define Spi_Block_Expected_CheckSum_spi_addr        0x070B
 #define Spi_Block_Data_Base_spi_addr                0x3000
 #define Spi_Block_Data_Last_spi_addr                0x3FFE
 #define Spi_Block_End_spi_addr                      0x3FFF

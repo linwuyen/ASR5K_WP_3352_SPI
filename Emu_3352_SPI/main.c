@@ -1,6 +1,9 @@
 //
 // Included Files
 //
+//
+// Included Files
+//
 #include "board.h"
 #include "c2000ware_libraries.h"
 #include "device.h"
@@ -10,6 +13,7 @@
 // Include refactored SPI Master module
 #include "SPIA_Master/SPI_master.h"
 #include "SPIB_Slave/spi_slave.h"
+#include "SPIB_Slave/spi_fifo.h"
 #include "asr5k_spi_selftest.h"
 
 
@@ -59,6 +63,10 @@ void main(void) {
   //
   EINT;
   ERTM;
+
+#if ASR5K_ENABLE_FIFO_SELFTEST
+  (void)FIFO_Test_Run();
+#endif
 
   //
   // Loop Forever

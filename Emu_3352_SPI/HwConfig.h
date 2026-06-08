@@ -54,4 +54,8 @@ extern void initHwConfig(ST_HW_CONFIG * p);
 extern ST_HW_CONFIG sHwConfig;
 extern ST_HW_DERIVE sHwDerive;
 
+#ifndef ASR5K_ENABLE_FIFO_SELFTEST
+#define ASR5K_ENABLE_FIFO_SELFTEST 0
+#endif
+
 #endif /* HWCONFIG_H_ */

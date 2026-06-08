@@ -5,4 +5,5 @@ SECTIONS
     spib_slave_state : > RAMGS3
     asr5k_spi_selftest_state : > RAMGS4
     asr5k_spi_selftest_config : > RAMGS4
+    spi_fifo_state : > RAMGS5
 }

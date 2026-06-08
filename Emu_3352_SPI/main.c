@@ -14,6 +14,7 @@
 #include "SPIA_Master/SPI_master.h"
 #include "SPIB_Slave/spi_slave.h"
 #include "SPIB_Slave/spi_fifo.h"
+#include "SPIB_Slave/spi_pingpong.h"
 #include "asr5k_spi_selftest.h"
 
 
@@ -66,6 +67,10 @@ void main(void) {
 
 #if ASR5K_ENABLE_FIFO_SELFTEST
   (void)FIFO_Test_Run();
+#endif
+
+#if ASR5K_ENABLE_PINGPONG_SELFTEST
+  (void)RxFramePingPong_Test_Run();
 #endif
 
   //

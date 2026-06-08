@@ -442,3 +442,17 @@ Optimization
 Make the current system work first.
 
 Optimize later.
+
+---
+
+# Document Authority Hierarchy
+
+When analyzing this workspace and its metadata inside `.agent/`, refer to [ARCHITECTURE_AUTHORITY.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/00_Project/ARCHITECTURE_AUTHORITY.md) for document roles.
+
+* **Tier 1 (Rules)**: `rules/ASR5K_Context.md`, `rules/rules.md`. Highest authority.
+* **Tier 2 (Specifications)**: Active specs like `SPEC_FIRMWARE_ARCH.md`, `03_Knowledge/Peripheral/DMA/CPU1_ARCH_DESIGN.MD`. Contains authoritative design contracts.
+* **Tier 3 (Milestones/Prototypes)**: Milestone closed reports (e.g. `02_Milestones/M2_FIFO.md`). **These represent historical checkpoint logs or experimental utilities and are NOT active system specifications.**
+* **Tier 4 (Research/References)**: Exploratory research notes and static PDFs.
+
+AI agents MUST NOT mix up Tier 3/4 documents with Tier 1/2 specifications.
+

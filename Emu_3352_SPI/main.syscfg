@@ -118,7 +118,7 @@ CMD2.sectionMemory_init_array            = ["FLASH1"];
 CMD2.sectionMemory_const                 = ["FLASH5"];
 CMD2.sectionMemory_ovly                  = ["FLASH6"];
 CMD2.sectionRunFromDifferentAddr_ramfunc = true;
-CMD2.sectionRun_ramfunc                  = ["RAMLS0"];
+CMD2.sectionRun_ramfunc                  = ["RAMLS0", "RAMLS1"];
 CMD2.sectionBinit_ramfunc                = false;
 
 /**

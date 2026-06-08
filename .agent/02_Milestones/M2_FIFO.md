@@ -1,5 +1,8 @@
 # M2 FIFO Circular Buffer Report (M2_FIFO.md)
 
+> [!NOTE]
+> **Status: Experimental Utility / Not Runtime Main Path**
+
 ## 1. Goal
 Establish a self-contained circular frame queue to decouple incoming SPI RX DMA transfers from the parser/dispatcher application processing.
 

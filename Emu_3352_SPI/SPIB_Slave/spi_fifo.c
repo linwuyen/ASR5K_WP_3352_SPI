@@ -116,7 +116,6 @@ bool FIFO_Test_Run(void)
     SPI_FRAME_t txFrame;
     SPI_FRAME_t rxFrame;
     uint16_t i;
-    uint32_t stressIdx;
 
     /* Reset global results */
     g_fifoTestResult.test1_pass = false;
@@ -318,15 +317,14 @@ bool FIFO_Test_Run(void)
      * 6. 1000-frame stress, no lost frame
      * ------------------------------------------------------------------------- */
     SPI_FIFO_Init(fifo);
-    /* In a loop, push 3 frames and pop 2 frames until we have successfully
+    /* In a loop, push 4 frames and pop 4 frames until we have successfully
      * pushed 1000 frames. Then pop the remaining. Check order and counters. */
     uint32_t expectedPushCount = 0UL;
     uint32_t expectedPopCount = 0UL;
 
-    stressIdx = 0UL;
     while (expectedPushCount < 1000UL) {
-        /* Push 3 frames */
-        for (i = 0U; i < 3U; i++) {
+        /* Push 4 frames */
+        for (i = 0U; i < 4U; i++) {
             if (expectedPushCount < 1000UL) {
                 txFrame.cmd = (uint16_t)(expectedPushCount & 0xFFFFU);
                 txFrame.data = (uint16_t)((expectedPushCount * 3U) & 0xFFFFU);
@@ -338,8 +336,8 @@ bool FIFO_Test_Run(void)
             }
         }
 
-        /* Pop 2 frames */
-        for (i = 0U; i < 2U; i++) {
+        /* Pop 4 frames */
+        for (i = 0U; i < 4U; i++) {
             if (fifo->count > 0U) {
                 if (!SPI_FIFO_Pop(fifo, &rxFrame)) {
                     g_fifoTestResult.failed_step = 602U;

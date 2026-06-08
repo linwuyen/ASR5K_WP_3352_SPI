@@ -36,6 +36,17 @@ AI suggestions have the lowest priority.
 
 ---
 
+## Document Authority Hierarchy
+
+When reading project documentation inside `.agent/`, the AI MUST prioritize:
+1. `rules/` (ASR5K_Context.md, rules.md) - Global constraints and safety.
+2. `01_Specification/` (SPEC_*) - Authoritative active designs.
+
+Documents in `02_Milestones/` represent historical checkpoints and isolated test runs. Documents under `03_Knowledge/` tagged as research represent exploratory analysis.
+The AI MUST NOT treat milestone reports or research notes as authoritative active architecture specifications. Refer to [ARCHITECTURE_AUTHORITY.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/00_Project/ARCHITECTURE_AUTHORITY.md) for full mapping details.
+
+---
+
 ## Core Principles
 
 ### 1. Minimal Change

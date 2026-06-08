@@ -6,4 +6,5 @@ SECTIONS
     asr5k_spi_selftest_state : > RAMGS4
     asr5k_spi_selftest_config : > RAMGS4
     spi_fifo_state : > RAMGS5
+    spib_pingpong_state : > RAMGS6
 }

@@ -58,4 +58,8 @@ extern ST_HW_DERIVE sHwDerive;
 #define ASR5K_ENABLE_FIFO_SELFTEST 0
 #endif
 
+#ifndef ASR5K_ENABLE_PINGPONG_SELFTEST
+#define ASR5K_ENABLE_PINGPONG_SELFTEST 1
+#endif
+
 #endif /* HWCONFIG_H_ */

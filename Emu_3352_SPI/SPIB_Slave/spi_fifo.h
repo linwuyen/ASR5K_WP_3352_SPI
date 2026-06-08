@@ -9,6 +9,9 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "device.h"
+#include "ctypedef.h"
+#include "HwConfig.h"
 
 #define SPI_FIFO_SIZE 128U
 

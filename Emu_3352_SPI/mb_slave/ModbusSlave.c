@@ -1,6 +1,7 @@
 #include "common.h"
 #include "ModbusSlave.h"
 #include "shareram.h"
+#include "asr5k_spi_selftest.h"
 #include <string.h>
 
 int16_t cntModbusTimeout(SCI_MODBUS *mbus)
@@ -65,7 +66,13 @@ int16_t getMbusRxFIFO(SCI_MODBUS *mbus)
 {
     if (0 < mbus->getRsize(mbus->sci))
     {
+        uint16_t u16PortIdle = (mbus->sFiFo.pushRcnts == 0U) ? 1U : 0U;
         uint16_t u16Temp = (mbus->rdfunc(mbus->sci) & 0x00FF);
+
+        if (Asr5kSpiSelfTest_UartRxByte(u16Temp, u16PortIdle) != 0U)
+        {
+            return 0;
+        }
 
         // make a copy and push into the shareram
         sAccessCPU1.u16RxRAM[sAccessCPU1.pushRcnts] = u16Temp;

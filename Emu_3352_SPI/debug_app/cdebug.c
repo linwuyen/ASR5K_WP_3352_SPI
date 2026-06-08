@@ -8,6 +8,7 @@
 #include "common.h"
 #include "shareram.h"
 #include "mb_slave/ModbusSlave.h"
+#include "asr5k_spi_selftest.h"
 
 
 typedef enum {
@@ -126,6 +127,9 @@ void runDebug(void)
         }
 #endif //TEST_MODBUS_ONLY
 
+        if (!isMbusBusy((SCI_MODBUS *)&mbcomm)) {
+            Asr5kSpiSelfTest_UartRun(DEBUG_SCI_BASE);
+        }
         exeModbusSlave((SCI_MODBUS *)&mbcomm);
 
         break;

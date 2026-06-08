@@ -10,6 +10,7 @@
 // Include refactored SPI Master module
 #include "SPIA_Master/SPI_master.h"
 #include "SPIB_Slave/spi_slave.h"
+#include "asr5k_spi_selftest.h"
 
 
 uint16_t cnt;
@@ -68,5 +69,7 @@ void main(void) {
     runSPIBslave();
     // Initialize on first call, then execute the SPIA Master task.
     runSPIAmaster();
+    // Run the non-blocking SPI test document automation.
+    Asr5kSpiSelfTest_Run();
   }
 }

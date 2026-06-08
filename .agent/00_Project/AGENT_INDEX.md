@@ -25,6 +25,7 @@ Active design contracts, interfaces, and architecture specifications for runtime
 
 * **[M2R_RXFRAME_PINGPONG.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M2R_RXFRAME_PINGPONG.md)**: Specification and verification plan for the official runtime Ping/Pong path.
 * **[RxFramePingPong_Contract.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M2R_RXFRAME_PINGPONG/RxFramePingPong_Contract.md)**: Interface definition, states, and transition rules.
+* **[M3_CPU1_DMA_RXFRAME_INTEGRATION.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M3_CPU1_DMA_RXFRAME_INTEGRATION.md)**: Architecture contract and verification report for connecting DMA CH3 to Ping/Pong manager (PASS / CLOSED).
 * **[SPEC_FIRMWARE_ARCH.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/01_Architecture/SPEC_FIRMWARE_ARCH.md)**: Core firmware architecture design spec.
 
 ---

@@ -103,7 +103,8 @@ typedef enum {
     SPIB_DRV_FAULT_NONE = 0,
     SPIB_DRV_FAULT_DMA_TIMEOUT = 1,
     SPIB_DRV_FAULT_FIFO_OVERFLOW = 2,
-    SPIB_DRV_FAULT_DMA_ERROR = 4
+    SPIB_DRV_FAULT_DMA_ERROR = 4,
+    SPIB_DRV_FAULT_OVERRUN = 8          /* M3: DMA done with no free alternate buffer */
 } SPIB_DRIVER_FAULT_e;
 
 typedef enum {
@@ -231,6 +232,12 @@ extern volatile uint32_t gSpibRxParseOkCount;
 extern volatile uint32_t gSpibRxParseFailCount;
 extern volatile uint32_t gSpibRxDmaRestartCount;
 extern volatile uint16_t gSpibRxErrorFlags;
+/* M3: Ping/Pong alternate buffer and counters */
+extern volatile uint16_t gSpibRxAltFrame[SPIB_RX_REG_WORDS];
+extern volatile uint16_t gSpibRxM3ActiveBuf;
+extern volatile uint32_t gSpibRxM3PingFullCount;
+extern volatile uint32_t gSpibRxM3PongFullCount;
+extern volatile uint32_t gSpibRxM3OverrunCount;
 extern volatile uint16_t OUTPUT_ON;
 extern volatile uint32_t g_u32DebugLastTx;
 extern volatile uint32_t g_u32DebugLastValidResponse;

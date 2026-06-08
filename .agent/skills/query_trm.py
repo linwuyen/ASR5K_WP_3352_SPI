@@ -12,13 +12,13 @@ except ImportError:
 
 # 對照表：將週邊模組名稱映射到實體 PDF 檔案
 PDF_MAP = {
-    "ADC": ".agent/specs/Peripheral/ADC/2838xTRM-ADC.pdf",
-    "DMA": ".agent/specs/Peripheral/DMA/28377_TRM-DMA.pdf",
-    "EPWM": ".agent/specs/Peripheral/EPWM/2838xTRM-PWM.pdf",
-    "PWM": ".agent/specs/Peripheral/EPWM/2838xTRM-PWM.pdf",
-    "IPC": ".agent/specs/Peripheral/IPC/28377_TRM-IPC.pdf",
-    "MCBSP": ".agent/specs/Peripheral/MCBSP/28388_TRM-MCBSP.pdf",
-    "SPI": ".agent/specs/Peripheral/SPI/28377_TRM-SPI.pdf",
+    "ADC": ".agent/03_Knowledge/Peripheral/ADC/2838xTRM-ADC.pdf",
+    "DMA": ".agent/03_Knowledge/Peripheral/DMA/28377_TRM-DMA.pdf",
+    "EPWM": ".agent/03_Knowledge/Peripheral/EPWM/2838xTRM-PWM.pdf",
+    "PWM": ".agent/03_Knowledge/Peripheral/EPWM/2838xTRM-PWM.pdf",
+    "IPC": ".agent/03_Knowledge/Peripheral/IPC/28377_TRM-IPC.pdf",
+    "MCBSP": ".agent/03_Knowledge/Peripheral/MCBSP/28388_TRM-MCBSP.pdf",
+    "SPI": ".agent/03_Knowledge/SPI_Docs/SPI_TRM_28377.pdf",
 }
 
 def search_register_pdf(module_name, register_name):

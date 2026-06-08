@@ -31,6 +31,19 @@ volatile uint32_t gSpibRxDmaRestartCount;
 #pragma DATA_SECTION(gSpibRxErrorFlags, "spib_slave_state")
 volatile uint16_t gSpibRxErrorFlags;
 
+/* M3: 2-word Pong buffer (Ping = gSpibRxRegFrame, Pong = gSpibRxAltFrame) */
+#pragma DATA_SECTION(gSpibRxAltFrame, "spib_slave_state")
+#pragma DATA_ALIGN(gSpibRxAltFrame, 2)
+volatile uint16_t gSpibRxAltFrame[SPIB_RX_REG_WORDS];
+#pragma DATA_SECTION(gSpibRxM3ActiveBuf, "spib_slave_state")
+volatile uint16_t gSpibRxM3ActiveBuf;       /* 0=DMA→Ping, 1=DMA→Pong */
+#pragma DATA_SECTION(gSpibRxM3PingFullCount, "spib_slave_state")
+volatile uint32_t gSpibRxM3PingFullCount;
+#pragma DATA_SECTION(gSpibRxM3PongFullCount, "spib_slave_state")
+volatile uint32_t gSpibRxM3PongFullCount;
+#pragma DATA_SECTION(gSpibRxM3OverrunCount, "spib_slave_state")
+volatile uint32_t gSpibRxM3OverrunCount;
+
 // Global debug variables
 volatile uint32_t g_u32DebugLastTx;
 volatile uint32_t g_u32DebugLastValidResponse;
@@ -151,6 +164,14 @@ static void initSpibRxDma(void)
     s_bSpibRxDmaArmed = false;
     s_bSpibRxPartialPending = false;
 
+    /* M3: reset Pong buffer and alternation counters */
+    gSpibRxAltFrame[0]      = 0U;
+    gSpibRxAltFrame[1]      = 0U;
+    gSpibRxM3ActiveBuf      = 0U;   /* start: DMA targets Ping */
+    gSpibRxM3PingFullCount  = 0U;
+    gSpibRxM3PongFullCount  = 0U;
+    gSpibRxM3OverrunCount   = 0U;
+
     DMA_disableTrigger(SPIB_RX_DMA_CH_BASE);
     DMA_disableInterrupt(SPIB_RX_DMA_CH_BASE);
     DMA_stopChannel(SPIB_RX_DMA_CH_BASE);
@@ -194,7 +215,10 @@ void SPIB_RxDmaClearDone(void)
 void SPIB_RxDmaRestart(void)
 {
     uint16_t *pSrcAddr = (uint16_t *)(SPIB_SYSTEM_BASE + SPI_O_RXBUF);
-    uint16_t *pDstAddr = (uint16_t *)&gSpibRxRegFrame[0];
+    /* M3: destination alternates between Ping and Pong per frame */
+    uint16_t *pDstAddr = (gSpibRxM3ActiveBuf == 0U) ?
+                         (uint16_t *)&gSpibRxRegFrame[0] :
+                         (uint16_t *)&gSpibRxAltFrame[0];
 
     gSpibRxDmaRestartCount++;
     gSpibRxRegFrameReady = false;
@@ -876,14 +900,35 @@ void pollReceiveFromSpi(void)
          gSpibRxDmaDoneCount++;
          spiB_slave.stDiag.stDriver.stComm.u32RxTotal++;
 
-         u16Cmd = gSpibRxRegFrame[0];
-         u16Data = gSpibRxRegFrame[1];
+         /* M3 Step 1: capture frame from the buffer DMA just filled */
+         if (gSpibRxM3ActiveBuf == 0U)
+         {
+             u16Cmd  = gSpibRxRegFrame[0];   /* Ping */
+             u16Data = gSpibRxRegFrame[1];
+             gSpibRxM3PingFullCount++;
+         }
+         else
+         {
+             u16Cmd  = gSpibRxAltFrame[0];   /* Pong */
+             u16Data = gSpibRxAltFrame[1];
+             gSpibRxM3PongFullCount++;
+         }
+
          if (u16Cmd != 0xFFFFU)
          {
              g_u32SpiSlaveLastRequest =
                  ((uint32_t)u16Cmd << 16) | (uint32_t)u16Data;
          }
 
+         /* M3 Step 2: switch active buffer then restart DMA to alternate.
+          * DMA is armed to the new buffer before parse begins,
+          * so hardware can receive the next frame immediately.
+          * No deferred queue — parse follows in the same call. */
+         gSpibRxM3ActiveBuf ^= 1U;
+         SPIB_RxDmaClearDone();
+         SPIB_RxDmaRestart();
+
+         /* M3 Step 3: parse the captured frame immediately */
          bParseOk = SPIB_ParseRegFrame(u16Cmd, u16Data);
          if (bParseOk)
          {
@@ -895,9 +940,6 @@ void pollReceiveFromSpi(void)
              gSpibRxErrorFlags |= SPIB_RX_ERR_FRAME_PARSE_FAIL;
              reportSlaveError(SPIB_FAULT_SOURCE_PROTOCOL, (uint16_t)SPIB_PROT_FAULT_FRAME_PARSE_FAIL);
          }
-
-         SPIB_RxDmaClearDone();
-         SPIB_RxDmaRestart();
      }
 
      uint32_t u32Elapsed = getElapsedTicks(s_u32LastRxTicks);

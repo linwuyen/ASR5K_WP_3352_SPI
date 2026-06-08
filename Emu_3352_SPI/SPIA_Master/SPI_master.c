@@ -146,19 +146,24 @@ static void buildWaveBlockPacket(ST_SPI_MASTER *pstInst,
                                  u16 u16Idx,
                                  u16 *pu16Address,
                                  u16 *pu16Data) {
-  if (u16Idx < SPI_SINE_TABLE_SIZE) {
-    *pu16Address = (u16)(Spi_Block_Data_Base_spi_addr + u16Idx);
-    if (pstInst->stBlockTx.u16WaveMode == 1U) {
-      *pu16Data = g_u16SpiMasterWaveRam[u16Idx];
-    } else {
-      *pu16Data = (u16)((u16Idx + 1U) * 16U);
-    }
-  } else if (u16Idx == SPI_SINE_TABLE_SIZE) {
-    *pu16Address = Spi_Block_Expected_CheckSum_spi_addr;
-    *pu16Data = calcGeneratedWaveChecksum(pstInst->stBlockTx.u16WaveMode);
+  if (pstInst->stBlockTx.u16WaveMode == 2U) {
+    *pu16Address = (u16)(0x3000U + u16Idx);
+    *pu16Data = (u16)((u16Idx + 1U) * 16U);
   } else {
-    *pu16Address = Spi_Block_End_spi_addr;
-    *pu16Data = 4095U;
+    if (u16Idx < SPI_SINE_TABLE_SIZE) {
+      *pu16Address = (u16)(Spi_Block_Data_Base_spi_addr + u16Idx);
+      if (pstInst->stBlockTx.u16WaveMode == 1U) {
+        *pu16Data = g_u16SpiMasterWaveRam[u16Idx];
+      } else {
+        *pu16Data = (u16)((u16Idx + 1U) * 16U);
+      }
+    } else if (u16Idx == SPI_SINE_TABLE_SIZE) {
+      *pu16Address = Spi_Block_Expected_CheckSum_spi_addr;
+      *pu16Data = calcGeneratedWaveChecksum(pstInst->stBlockTx.u16WaveMode);
+    } else {
+      *pu16Address = Spi_Block_End_spi_addr;
+      *pu16Data = 4095U;
+    }
   }
 }
 
@@ -347,7 +352,7 @@ u16 startSPIAmasterTest(SPI_MASTER_TEST_CMD_e eCommand,
   ensureSPIAmasterInitialized();
 
   if ((eCommand == SPI_MASTER_TEST_CMD_NONE) ||
-      (eCommand > SPI_MASTER_TEST_CMD_PACKET_WRITE) ||
+      (eCommand > SPI_MASTER_TEST_CMD_WAVE_DOWNLOAD) ||
       (spiA_master.stDiag.u16FaultCode != 0U) ||
       (s_stSpiTest.u16Start != 0U) ||
       (s_stSpiTest.eStatus == SPI_TEST_STATUS_RUNNING) ||
@@ -810,6 +815,15 @@ static u16 startTriggeredSpiMasterTest(ST_SPI_MASTER *pstInst) {
     }
     break;
 
+  case SPI_MASTER_TEST_CMD_WAVE_DOWNLOAD:
+    if (writeBlockSpiMaster(pstInst, 0, 0, 4096U, onBlockWriteComplete) == 1U) {
+      pstInst->stBlockTx.bLoop = 0U;
+      pstInst->stBlockTx.u16WaveMode = 2U;
+      markTriggeredTestRunning(SPI_APP_STATE_BLOCK_WRITE);
+      return 1U;
+    }
+    break;
+
   default:
     s_stSpiApp.eTestState = SPI_MASTER_TEST_ERROR;
     s_stSpiApp.u16LastResult = 0U;
@@ -1113,6 +1127,12 @@ static void onManualWriteComplete(u16 u16RxAddr, u16 u16RxData) {
 }
 
 static void onBlockWriteComplete(void) {
+  if (s_stSpiMaster.stBlockTx.u16WaveMode == 2U) {
+    s_stSpiApp.eTestState = SPI_MASTER_TEST_DONE;
+    s_stSpiApp.eState = SPI_APP_STATE_IDLE;
+    return;
+  }
+
   if (verifyBlockResponses(s_stSpiMaster.stBlockTx.pstTxBuf,
                            s_stSpiMaster.stBlockTx.pstRxBuf,
                            s_stSpiMaster.stBlockTx.u16Length,

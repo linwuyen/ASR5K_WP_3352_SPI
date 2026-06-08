@@ -427,13 +427,22 @@ static uint16_t tryHandleBlockPath(uint16_t u16Address, uint16_t u16Data)
 
 static uint16_t tryHandleFastPath(uint16_t u16Address, uint16_t u16Data)
 {
-    uint16_t u16RespData;
+    uint16_t u16RespData = 0U;
 
     if (u16Address == 0xFFFFU)
     {
         return 1U;
     }
 
+    /* Route to Wave Download Service if it handles this address */
+    if (WaveDownload_HandleWrite(u16Address, u16Data, &u16RespData))
+    {
+        writeDirectSpiResponse(u16Address, u16RespData);
+        spiB_slave.u32FastPathCount++;
+        return 1U;
+    }
+
+    /* DIAG_COMPAT_ONLY: Fallback to legacy block path only when Wave Download is inactive */
     if (tryHandleBlockPath(u16Address, u16Data) == 1U)
     {
         spiB_slave.u32FastPathCount++;
@@ -779,6 +788,7 @@ void initSPIslave(void)
     DMA_initController();
     initNativeSpiSlave(SPIB_SYSTEM_BASE);
     initSpibRxDma();
+    WaveDownload_Init();
 
     for (u16Idx = 0U; u16Idx < SIZE_OF_SPI_BLOCK_RAM; u16Idx++)
     {

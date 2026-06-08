@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include "cmd_parser.h"
 #include "Diag/comm_diag.h"
+#include "wave_download.h"
 
 typedef enum {
     _INIT_SPI_AS_SLAVE =  0x00000000,

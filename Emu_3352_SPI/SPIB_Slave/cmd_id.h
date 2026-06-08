@@ -262,6 +262,13 @@
 #define n_V_Peak_Trip_Set_MSB_spi_addr              0x093F
 #define n_V_Peak_Trip_Set_LSB_spi_addr              0x0940
 
+#define WAVE_PAGE_SELECT_ADDR                       0x0958
+#define WAVE_DOWNLOAD_CTRL_ADDR                     0x0959
+#define WAVE_PAGE_STATUS_ADDR                       0x095A
+#define WAVE_VALIDATE_ADDR                          0x0960
+#define WAVE_ACTIVATE_ADDR                          0x0961
+
+
 // Block RAM streaming window
 // 0x3000..0x3FFE carries up to 4095 points. 0x3FFF marks the RAM page ready
 // for a later background extflash commit.

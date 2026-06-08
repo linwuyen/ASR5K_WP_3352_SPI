@@ -12,7 +12,7 @@
 #include "SPIB_Slave/spi_slave.h"
 
 #define SELFTEST_WAIT_LIMIT 5000000UL
-#define SELFTEST_EXECUTED_COUNT 8U
+#define SELFTEST_EXECUTED_COUNT 9U
 #define SELFTEST_UART_RX_SIZE 16U
 #define SELFTEST_UART_TX_SIZE 96U
 
@@ -68,7 +68,9 @@ s_testCommand[ASR5K_SPI_SELFTEST_RECORD_COUNT] = {
     { ASR5K_SPI_TEST_ID_7, SPI_MASTER_TEST_CMD_REG_FRAME_1000,
       0x0000U, 0x0000U, 1000UL, 1U },
     { ASR5K_SPI_TEST_ID_8, SPI_MASTER_TEST_CMD_PACKET_WRITE,
-      0x0900U, 0x0001U, 0x00040000UL, 1U }
+      0x0900U, 0x0001U, 0x00040000UL, 1U },
+    { ASR5K_SPI_TEST_ID_9, SPI_MASTER_TEST_CMD_WRITE,
+      0x0958U, 0x0001U, 1UL, 1U }
 };
 
 #pragma DATA_SECTION(s_executionOrder, "asr5k_spi_selftest_config")
@@ -81,7 +83,8 @@ s_executionOrder[SELFTEST_EXECUTED_COUNT] = {
     ASR5K_SPI_TEST_ID_5,
     ASR5K_SPI_TEST_ID_6,
     ASR5K_SPI_TEST_ID_7,
-    ASR5K_SPI_TEST_ID_8
+    ASR5K_SPI_TEST_ID_8,
+    ASR5K_SPI_TEST_ID_9
 };
 
 #pragma DATA_SECTION(g_asr5kSpiSelfTest, "asr5k_spi_selftest_state")
@@ -99,6 +102,8 @@ static uint16_t s_test3SetActual;
 static uint16_t s_test8Phase;
 #pragma DATA_SECTION(s_test8PacketActual, "asr5k_spi_selftest_state")
 static uint16_t s_test8PacketActual;
+#pragma DATA_SECTION(s_test9Phase, "asr5k_spi_selftest_state")
+static uint16_t s_test9Phase;
 #pragma DATA_SECTION(s_packetProtocolRxBaseline, "asr5k_spi_selftest_state")
 static uint32_t s_packetProtocolRxBaseline;
 #pragma DATA_SECTION(s_waitCount, "asr5k_spi_selftest_state")
@@ -386,6 +391,54 @@ static uint16_t validateCurrentTest(uint16_t *failStep)
         }
         break;
 
+    case ASR5K_SPI_TEST_ID_9:
+        if (g_waveDownload.u16SelectedPage != 1U) {
+            *failStep = ASR5K_SPI_FAIL_STEP_WAVE_DOWNLOAD;
+            return SELFTEST_FAULT_BLOCK_RESULT;
+        }
+        if (g_waveDownload.u16SampleCount[1] != 4096U) {
+            *failStep = ASR5K_SPI_FAIL_STEP_WAVE_DOWNLOAD;
+            return SELFTEST_FAULT_BLOCK_RESULT;
+        }
+        if (g_waveDownload.bAddressContinuous[1] != true) {
+            *failStep = ASR5K_SPI_FAIL_STEP_WAVE_DOWNLOAD;
+            return SELFTEST_FAULT_BLOCK_RESULT;
+        }
+        if (g_waveDownload.u16LastAddress[1] != 0x3FFF) {
+            *failStep = ASR5K_SPI_FAIL_STEP_WAVE_DOWNLOAD;
+            return SELFTEST_FAULT_BLOCK_RESULT;
+        }
+        if (g_waveDownload.bDownloadComplete[1] != true) {
+            *failStep = ASR5K_SPI_FAIL_STEP_WAVE_DOWNLOAD;
+            return SELFTEST_FAULT_BLOCK_RESULT;
+        }
+        if (g_waveDownload.u16PageState[1] != 6U) { /* WAVE_PAGE_STATE_LOCKED */
+            *failStep = ASR5K_SPI_FAIL_STEP_WAVE_ACTIVATE;
+            return SELFTEST_FAULT_BLOCK_RESULT;
+        }
+        if (g_waveDownload.u16ActivePage != 1U) {
+            *failStep = ASR5K_SPI_FAIL_STEP_WAVE_ACTIVATE;
+            return SELFTEST_FAULT_MASTER_RESULT;
+        }
+        /* Verify no Flash path was used */
+        if (spiB_slave.u16FlashCommitPending != 0U ||
+            spiB_slave.eFlashState != FLASH_COMMIT_IDLE) {
+            *failStep = ASR5K_SPI_FAIL_STEP_WAVE_VALIDATE;
+            return SELFTEST_FAULT_BLOCK_RESULT;
+        }
+        /* Verify expected storage backend is used and has correct sample count */
+        if (g_waveDownload.stDiag.u32WriteCount != 4096UL) {
+            *failStep = ASR5K_SPI_FAIL_STEP_WAVE_SDRAM;
+            return SELFTEST_FAULT_BLOCK_RESULT;
+        }
+        /* Verify samples from backend storage abstraction */
+        if (WaveDownload_ReadSample(1U, 0U) != 16U ||
+            WaveDownload_ReadSample(1U, 4095U) != 65536U) {
+            *failStep = ASR5K_SPI_FAIL_STEP_WAVE_SDRAM;
+            return SELFTEST_FAULT_RAMP_DATA;
+        }
+        break;
+
     default:
         *failStep = ASR5K_SPI_FAIL_STEP_MASTER_STATUS;
         return SELFTEST_FAULT_MASTER_STATUS;
@@ -492,10 +545,31 @@ static void startCurrentCommand(void)
         address = 0x0900U;
         data = 0U;
     }
+    if ((command->test_id == ASR5K_SPI_TEST_ID_9) &&
+        (s_test9Phase > 0U)) {
+        if (s_test9Phase == 1U) {
+            masterCommand = SPI_MASTER_TEST_CMD_WAVE_DOWNLOAD;
+            address = 0U;
+            data = 0U;
+        } else if (s_test9Phase == 2U) {
+            masterCommand = SPI_MASTER_TEST_CMD_WRITE;
+            address = WAVE_DOWNLOAD_CTRL_ADDR;
+            data = 1U;
+        } else if (s_test9Phase == 3U) {
+            masterCommand = SPI_MASTER_TEST_CMD_WRITE;
+            address = WAVE_VALIDATE_ADDR;
+            data = 1U;
+        } else if (s_test9Phase == 4U) {
+            masterCommand = SPI_MASTER_TEST_CMD_WRITE;
+            address = WAVE_ACTIVATE_ADDR;
+            data = 1U;
+        }
+    }
 
     if ((s_waitCount == 0U) &&
         (s_test3Phase == 0U) &&
-        (s_test8Phase == 0U)) {
+        (s_test8Phase == 0U) &&
+        (s_test9Phase == 0U)) {
         readCounters(&result->baseline);
         result->status = ASR5K_SPI_TEST_RUNNING;
         if (command->test_id == ASR5K_SPI_TEST_ID_8) {
@@ -605,6 +679,73 @@ static void completeCurrentTest(void)
               (OUTPUT_ON == 0U)) ? 0U : 1U);
     }
 
+    if ((command->test_id == ASR5K_SPI_TEST_ID_9) &&
+        (s_test9Phase < 4U)) {
+        if (s_test9Phase == 0U) {
+            if (spiA_master.stTest.u16Result != 1U) {
+                result->actual = spiA_master.stTest.u16Result;
+                failSelfTest(ASR5K_SPI_FAIL_STEP_WAVE_DOWNLOAD,
+                             SELFTEST_FAULT_MASTER_RESULT);
+                return;
+            }
+        } else if (s_test9Phase == 1U) {
+            if (spiA_master.stTest.eStatus != SPI_TEST_STATUS_PASSED) {
+                result->actual = spiA_master.stTest.u16Result;
+                failSelfTest(ASR5K_SPI_FAIL_STEP_WAVE_DOWNLOAD,
+                             SELFTEST_FAULT_MASTER_STATUS);
+                return;
+            }
+        } else if (s_test9Phase == 2U) {
+            if (spiA_master.stTest.u16Result != 1U) {
+                result->actual = spiA_master.stTest.u16Result;
+                failSelfTest(ASR5K_SPI_FAIL_STEP_WAVE_DOWNLOAD,
+                             SELFTEST_FAULT_MASTER_RESULT);
+                return;
+            }
+        } else if (s_test9Phase == 3U) {
+            if (spiA_master.stTest.u16Result != 4U) { /* WAVE_PAGE_STATE_VALID */
+                result->actual = spiA_master.stTest.u16Result;
+                failSelfTest(ASR5K_SPI_FAIL_STEP_WAVE_VALIDATE,
+                             SELFTEST_FAULT_MASTER_RESULT);
+                return;
+            }
+        }
+        s_test9Phase++;
+        s_waitCount = 0U;
+        s_state = SELFTEST_STATE_START;
+        return;
+    }
+
+    if (command->test_id == ASR5K_SPI_TEST_ID_9) {
+        if (spiA_master.stTest.u16Result != 6U) { /* WAVE_PAGE_STATE_LOCKED */
+            result->actual = spiA_master.stTest.u16Result;
+            failSelfTest(ASR5K_SPI_FAIL_STEP_WAVE_ACTIVATE,
+                         SELFTEST_FAULT_MASTER_RESULT);
+            return;
+        }
+        if (g_waveDownload.u16ActivePage != 1U) {
+            result->actual = g_waveDownload.u16ActivePage;
+            failSelfTest(ASR5K_SPI_FAIL_STEP_WAVE_ACTIVATE,
+                         SELFTEST_FAULT_MASTER_RESULT);
+            return;
+        }
+        /* Verify page content using storage abstraction */
+        {
+            uint16_t idx;
+            for (idx = 0U; idx < 4096U; idx++) {
+                uint16_t expected_val = (uint16_t)((idx + 1U) * 16U);
+                uint16_t actual_val = WaveDownload_ReadSample(1U, idx);
+                if (actual_val != expected_val) {
+                    result->actual = ((uint32_t)idx << 16U) | actual_val;
+                    failSelfTest(ASR5K_SPI_FAIL_STEP_WAVE_SDRAM,
+                                 SELFTEST_FAULT_RAMP_DATA);
+                    return;
+                }
+            }
+        }
+        result->actual = 6U;
+    }
+
     calculateDelta(result);
     captureFaults(result);
     fault = validateCurrentTest(&failStep);
@@ -620,6 +761,7 @@ static void completeCurrentTest(void)
     s_test3SetActual = 0U;
     s_test8Phase = 0U;
     s_test8PacketActual = 0U;
+    s_test9Phase = 0U;
     s_waitCount = 0U;
 
     if (s_commandIndex >= SELFTEST_EXECUTED_COUNT) {

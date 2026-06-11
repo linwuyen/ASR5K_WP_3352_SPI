@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<system>
+    <project configuration="FLASH" id="project_0" name="ASR5K_F28388D_CPU1"/>
+    <core id="C28xx_CPU1" project="project_0"/>
+    <project configuration="FLASH" id="project_1" name="ASR5K_F28388D_CPU2"/>
+    <core id="C28xx_CPU2" project="project_1"/>
+    <preBuildSteps/>
+    <postBuildSteps/>
+</system>

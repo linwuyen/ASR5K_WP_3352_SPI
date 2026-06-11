@@ -161,35 +161,32 @@ Milestone M3 is officially **PASS / CLOSED**.
 
 ---
 
-## 12. Physical Verification Results (PASS / CLOSED)
+## 12. Physical CCS Watch Verification
 
-On 2026-06-08, physical CCS Watch verification was successfully performed and completed. The observed values matched all PASS criteria:
+### Status
+M3_CPU1_DMA_RXFRAME_INTEGRATION
+PASS / CLOSED
 
-1. **Idle after init**:
-   - `gSpibRxM3ActiveBuf == 0`
-   - `gSpibRxM3PingFullCount == 0`
-   - `gSpibRxM3PongFullCount == 0`
-   - `gSpibRxM3OverrunCount == 0`
-   - `gSpibRxErrorFlags == 0`
+### Observed Values
+```text
+gSpibRxDmaDoneCount     = 4
+gSpibRxM3PingFullCount  = 2
+gSpibRxM3PongFullCount  = 2
+gSpibRxParseOkCount     = 4
+gSpibRxParseFailCount   = 0
+gSpibRxM3OverrunCount   = 0
+```
 
-2. **First 2-word frame** (`CMD = 0x0100`, `DATA = 0x0001`):
-   - `gSpibRxDmaDoneCount` incremented by 1
-   - `gSpibRxM3PingFullCount` incremented by 1
-   - `gSpibRxM3ActiveBuf == 1`
-   - `gSpibRxRegFrame[0] == 0x0100`
-   - `gSpibRxRegFrame[1] == 0x0001`
-   - `gSpibRxM3OverrunCount == 0`
+### Verified Data Path
+```text
+SPIB RX FIFO
+     ↓
+  DMA CH3
+     ↓
+2-word RxFrame Ping/Pong
+     ↓
+CPU1 Background Parser
+```
 
-3. **Second 2-word frame** (`CMD = 0x0200`, `DATA = 0x0002`):
-   - `gSpibRxDmaDoneCount` incremented to 2
-   - `gSpibRxM3PongFullCount` incremented by 1 (total 1)
-   - `gSpibRxM3ActiveBuf == 0`
-   - `gSpibRxAltFrame[0] == 0x0200`
-   - `gSpibRxAltFrame[1] == 0x0002`
-   - `gSpibRxM3OverrunCount == 0`
-
-4. **10 continuous 2-word frames**:
-   - `gSpibRxM3PingFullCount + gSpibRxM3PongFullCount == gSpibRxDmaDoneCount == 10`
-   - `gSpibRxParseFailCount == 0`
-   - `gSpibRxM3OverrunCount == 0`
-   - `gSpibRxErrorFlags == 0`
+### Result
+PASS

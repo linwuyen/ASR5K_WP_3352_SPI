@@ -1,0 +1,127 @@
+# D02_2_1_SPIB_TO_AM3352 系統主控通訊實現計畫
+
+## 1. 目標 (Goals)
+基於 `D02_COMM_ARCHITECTURE.md` 第 2.1 節之規範，實現 C2000 (TMS320F28388D CPU1) 與 AM3352 (主控板) 間基於 SPIB (Slave) 的通訊介面。主要目標為：
+1. **不漏資料 (No Data Loss)**：解決純輪詢可能造成的 RX FIFO 溢出問題。
+2. **無 CPU 阻擋 (No CPU Stall)**：避免 CPU 等待 SPI TX 傳輸，確保 100kHz 高頻中斷不被 Jitter 干擾。
+3. **零干擾 (Zero Interference)**：將 SPI 通訊的資料搬移完全交由硬體 DMA 處理，不使用 SPI 的位元組級中斷。
+
+## 2. 架構 (Architecture)
+此設計**沿用舊有架構** (基於 D01 核心控制架構與 D02 擴充架構)，並進行通訊介面的細部深化配置：
+- **硬體角色**：SPIB 設置為 Slave，接收來自 AM3352 的 Clock 與 CS 訊號。
+- **DMA 配置**：
+  - **DMA CH3 (SPIB RX)**：負責接收 AM3352 的命令，並搬移至 `RxPacketBuffer`。
+  - **DMA CH4 (SPIB TX)**：負責將 `TxPingPongBuffer` 的資料回傳給 AM3352。
+- **記憶體模型**：
+  - TX 採用 Ping-Pong Buffer 確保資料更新與傳輸不衝突。
+  - RX 採用 Packet Buffer 接收固定長度封包。
+
+## 3. 流程 (Flow)
+以下為 SPIB 結合 DMA 與主迴圈運作的流程狀態機與資料流：
+
+```dot
+digraph SPIB_DataFlow {
+    rankdir=LR;
+    node [shape=box, style=filled, fillcolor=lightblue, fontname="Arial"];
+    
+    subgraph cluster_AM3352 {
+        label = "AM3352 (Master)";
+        style=dashed;
+        AM_TX [label="Send Command"];
+        AM_RX [label="Read Status"];
+    }
+
+    subgraph cluster_Hardware {
+        label = "C2000 Hardware (SPIB + DMA)";
+        color=black;
+        SPI_RX_FIFO [label="SPIB RX FIFO"];
+        SPI_TX_FIFO [label="SPIB TX FIFO"];
+        DMA_CH3 [label="DMA CH3\n(Auto Transfer)", shape=ellipse, fillcolor=lightgreen];
+        DMA_CH4 [label="DMA CH4\n(Auto Transfer)", shape=ellipse, fillcolor=lightgreen];
+    }
+
+    subgraph cluster_RAM {
+        label = "Global Shared RAM";
+        color=blue;
+        RxBuffer [label="RxPacketBuffer"];
+        TxPing [label="TxPingBuffer"];
+        TxPong [label="TxPongBuffer"];
+    }
+
+    subgraph cluster_CPU1 {
+        label = "CPU1 Main Loop (Background)";
+        color=red;
+        CmdParser [label="Command Parser\n(Validate CRC & Process)"];
+        StateUpdater [label="System State Updater\n(Fill Sensors & Status)"];
+    }
+
+    // Data Flow Connections
+    AM_TX -> SPI_RX_FIFO [label=" SPI MOSI", color=black];
+    SPI_RX_FIFO -> DMA_CH3 [label=" Trigger", style=dashed];
+    DMA_CH3 -> RxBuffer [label=" Copy Word"];
+    
+    RxBuffer -> CmdParser [label=" Polling DMA Flag\nwhen Buffer Full", color=red];
+
+    StateUpdater -> TxPing [label=" Fill Data\n(If Active)"];
+    StateUpdater -> TxPong [label=" Fill Data\n(If Active)"];
+    
+    TxPing -> DMA_CH4 [label=" Bind Source Addr"];
+    DMA_CH4 -> SPI_TX_FIFO [label=" Copy Word"];
+    SPI_TX_FIFO -> AM_RX [label=" SPI MISO", color=black];
+    
+    // Control Flow
+    CmdParser -> StateUpdater [label=" Update State", style=dotted];
+}
+```
+
+## 4. 功能說明 (Functional Description)
+- **SPIB 初始化**：設定 GPIO 復用腳位、SPI 傳輸格式 (建議 16-bit)、時鐘極性與相位，並開啟 TX/RX FIFO。
+- **DMA 初始化與連結**：將 DMA CH3/CH4 的觸發資源分別對應到 SPIB RX/TX FIFO 的水位旗標。設定 DMA 來源與目的位址，並開啟。
+- **RX 背景處理功能**：在 `main()` 空迴圈中，定期輪詢 DMA CH3 `Transfer Complete Flag`。一旦立旗，表示收到完整封包，隨即進行 CRC 檢驗與指令解析，完成後將旗標清零。
+- **TX 背景更新功能**：在 `main()` 迴圈中，定時將感測器最新數值寫入閒置的 Ping 或 Pong Buffer。寫滿一包後，若 DMA CH4 空閒，則切換指標，指示 DMA 取用剛更新的 Buffer 區塊。
+
+## 5. DMA 詳細參數配置 (DMA Detailed Configuration)
+為達成「無 CPU 阻擋」與「不漏資料」的目標，DMA (CH3/CH4) 需進行以下細部參數設定：
+
+### 5.1 DMA CH3 (SPIB RX 接收) 配置
+- **觸發源 (Trigger Source)**：SPIB RX FIFO 中斷 (如 `DMA_TRIGGER_SPIBRX`)。當 RX FIFO 達到設定水位 (通常設為 1) 時觸發。
+- **叢發傳輸 (Burst Size)**：每次觸發搬移 1 Word (16-bit)。 
+- **總傳輸量 (Transfer Size)**：設定為 `RX_PACKET_SIZE`，即一個封包的長度。
+- **位址步進 (Address Step)**：
+  - **來源 (Source)**：固定為 SPIB 的 RX Buffer 暫存器 (`SpibRegs.SPIRXBUF`)，步進為 0。
+  - **目的 (Destination)**：指向 `RxPacketBuffer`，步進為 1 (每次加 1 Word)。
+- **中斷與旗標 (Interrupt & Flag)**：
+  - 設定為傳輸完成時產生 DMA 內部旗標 (Interrupt at end of Transfer)。
+  - **核心精神**：在 PIE 控制器中**不要 Enable** 此 DMA 的中斷，而是由 CPU 的背景主迴圈輪詢 DMA 的完成旗標暫存器。
+- **連續模式 (Continuous Mode / Auto-Init)**：自動重載機制 (Auto-initialization)，傳輸滿一個封包後，目的位址自動歸零回到 `RxPacketBuffer` 起點，準備收下一包。
+
+### 5.2 DMA CH4 (SPIB TX 發送) 配置
+- **觸發源 (Trigger Source)**：SPIB TX FIFO 中斷 (如 `DMA_TRIGGER_SPIBTX`)。當 TX FIFO 內有空間可寫入時觸發。
+- **叢發傳輸 (Burst Size)**：每次觸發搬移 1 Word (16-bit)。
+- **總傳輸量 (Transfer Size)**：設定為 `TX_PACKET_SIZE`。
+- **位址步進 (Address Step)**：
+  - **來源 (Source)**：指向目前的發送緩衝區 (`TxPingBuffer` 或 `TxPongBuffer`)，步進為 1。
+  - **目的 (Destination)**：固定為 SPIB 的 TX Buffer 暫存器 (`SpibRegs.SPITXBUF`)，步進為 0。
+- **Ping-Pong 切換機制**：
+  - 在發送端不建議使用自動重載連發。而是在一包 (Transfer Size) 傳完後讓 DMA CH4 停下。
+  - 待背景主迴圈把新的資料準備好放到 Ping/Pong 緩衝區後，軟體手動將 DMA CH4 的 Source Address 替換成新的 Buffer 指標，再重新 Trigger 啟動 DMA 進行下一包的傳輸。
+
+## 6. 參數說明 (Parameter Description)
+- `RX_PACKET_SIZE`：RX 接收封包大小的 Word 數量。(依據 AM3352 通訊協定定義)
+- `TX_PACKET_SIZE`：TX 回傳封包大小的 Word 數量。
+- `RxPacketBuffer[RX_PACKET_SIZE]`：存放接收指令的記憶體陣列。
+- `TxPingBuffer[TX_PACKET_SIZE]` / `TxPongBuffer[TX_PACKET_SIZE]`：雙重緩衝區，確保硬體讀與軟體寫分離。
+- `pCurrentTxBuffer`：目前 CPU 執行寫入任務的記憶體指標。
+- `pDmaTxBuffer`：目前已經綁定並供 DMA 讀取出資料的記憶體指標。
+
+## 7. 注意事項 (Notes)
+- **中斷優先級**：**強烈建議**不要開啟 SPIB 與 DMA 的 CPU 中斷 (或將其設為最低優先級並僅做立旗機制)，否則進出中斷的延遲會直接導致 SPIC 的 10us 核心控制迴路產生 Jitter。所有的資料解析都必須放到背景主迴圈 (`main()` 內) 執行。
+- **資料對齊 (Alignment)**：由於 DMA 常以 16-bit 或 32-bit 為單位搬移資料，設計通訊封包 (Frame Format) 時應考慮資料對齊，避免 Byte-level 的位址錯位。
+
+## 8. 參考說明 (References)
+- `D01_DESIGN_CONTROL_ARCHITECTURE.md`：核心控制架構與 DMA 分配原則。
+- `D02_COMM_ARCHITECTURE.md`：周邊擴充通訊介面架構設計。
+
+## 9. 建議項目 (Suggestions)
+- **通訊協定安全**：採用含有 `Header`, `Command ID`, `Data Length`, `Payload`, `CRC16` 的嚴謹封包格式。
+- **斷線保護 (Timeout Protection)**：在背景主迴圈中實作看門狗或計時器 (Timer)，若超時未收到 RX DMA 的完成旗標，即視為與主控板斷線，進行相對應的錯誤處置。

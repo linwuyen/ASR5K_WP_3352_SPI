@@ -1,0 +1,120 @@
+/*
+ * cla_task.cla
+ *
+ *  Created on: Apr 3, 2024
+ *      Author: User
+ */
+
+#include "initCLA.h"
+
+//-----------------------------------------------------------------------------
+//
+// Task 1 - Title Here
+//
+// Description: Description/steps here.
+//
+//-----------------------------------------------------------------------------
+__attribute__((interrupt)) void Cla1Task1 ( void )
+{
+    //
+    // Uncomment this to debug the CLA while connected to the debugger
+    //
+    //__mdebugstop();
+
+    sCLA.u32HeartBeat++;
+    sCLA.u32HeartBeat &= 0x7FFFFFFF;
+
+
+}
+
+//-----------------------------------------------------------------------------
+//
+// Task 2 - Title Here
+//
+// Description: Description/steps here.
+//
+//-----------------------------------------------------------------------------
+__attribute__((interrupt))  void Cla1Task2 ( void )
+{
+
+
+}
+
+//-----------------------------------------------------------------------------
+//
+// Task 3 - Title Here
+//
+// Description: Description/steps here.
+//
+//-----------------------------------------------------------------------------
+__attribute__((interrupt))  void Cla1Task3 ( void )
+{
+
+}
+
+//-----------------------------------------------------------------------------
+//
+// Task 4 - Title Here
+//
+// Description: Description/steps here.
+//
+//-----------------------------------------------------------------------------
+__attribute__((interrupt))  void Cla1Task4 ( void )
+{
+
+}
+
+//-----------------------------------------------------------------------------
+//
+// Task 5 - Title Here
+//
+// Description: Description/steps here.
+//
+//-----------------------------------------------------------------------------
+__attribute__((interrupt))  void Cla1Task5 ( void )
+{
+
+}
+
+//-----------------------------------------------------------------------------
+//
+// Task 6 - Title Here
+//
+// Description: Description/steps here.
+//
+//-----------------------------------------------------------------------------
+__attribute__((interrupt))  void Cla1Task6 ( void )
+{
+
+}
+
+//-----------------------------------------------------------------------------
+//
+// Task 7 - Title Here
+//
+// Description: Description/steps here.
+//
+//-----------------------------------------------------------------------------
+__attribute__((interrupt))  void Cla1Task7 ( void )
+{
+
+}
+
+//-----------------------------------------------------------------------------
+//
+// Task 8 - Title Here
+//
+// Description: Description/steps here.
+//
+//-----------------------------------------------------------------------------
+__attribute__((interrupt))  void Cla1Task8 ( void )
+{
+
+}
+
+//
+// End of File
+//
+
+
+

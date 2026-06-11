@@ -1,0 +1,49 @@
+# DDS 程式碼修改分析報告 (V2)
+
+## 1. 摘要
+針對您手動修改後的 `dds/` 程式碼進行分析。
+*   **停止流程 (Stop Sequence)**: ✅ **已修復**。新增 `DDS_STATE_AMP_RAMP_DOWN` 狀態，且邏輯正確，能夠先降振幅再停止。
+*   **DC 模式 (0 Hz)**: ❌ **功能缺失**。您在 `dds_api.h` 的修改中移除了對 0 Hz 的支援邏輯，目前輸入 0 Hz 會被強制限制為 1.00 Hz。
+
+## 2. 詳細分析
+
+### 2.1 停止流程 (Stop Sequence) - OK
+您在 `dds_core.h` 與 `dds_config.h` 中透過以下方式正確實現了緩降停止：
+1.  **狀態擴充**: 新增 `DDS_STATE_AMP_RAMP_DOWN` (Bit 9)。
+2.  **狀態機邏輯**:
+    *   收到 Stop 指令且 Amp Ramp 啟用時，切換至 `DDS_STATE_AMP_RAMP_DOWN`。
+    *   在該狀態下，強制 Ramp 目標 (`f32Target`) 為 0.0。
+    *   等待 Ramp 完成 (`_DDS_RAMP_DONE`) 後，才進入 `Delay Off`。
+3.  **除錯追蹤**: 引進 `fgRecordState` 記錄歷史狀態 (`STARTED` | `RUNNING` 等)，用於邏輯判斷，這是一個不錯的除錯/狀態互鎖機制。
+
+### 2.2 DC 模式 (0 Hz) - Missing
+在 `dds_api.h` 中，原本 `DESIGN_TARGET_V2` 要求的 0 Hz 支援已被移除：
+
+```c
+// 目前的 Code (dds_api.h)
+static inline void DDS_SetFrequency(uint32_t u32Freq_x100) {
+  // 原本處理 0 Hz 的邏輯被移除了
+  
+  // 這裡會將 0 變成 100 (1.00 Hz)
+  if (u32Freq_x100 < DDS_MIN_FREQ_X100)
+    u32Freq_x100 = DDS_MIN_FREQ_X100;
+  
+  // ...
+}
+```
+**影響**:
+*   使用者無法設定 0 Hz 輸出純直流。
+*   輸入 0 會輸出 1 Hz 的極低頻交流訊號。
+
+### 2.3 其他觀察
+*   **Record State Logic**: `stepDDS` 中有一段邏輯：
+    ```c
+    else if(sDDS.fgRecordState & (DDS_STATE_STARTED|DDS_STATE_DELAY_ON)) { ... }
+    else { hal->sAmpRamp.f32Target = 0.0f; ... }
+    ```
+    這表示如果 `fgRecordState` 沒有 `STARTED` 相關位元 (例如系統剛 Init 但被強制切到 Running?)，振幅會被強制歸零。在正常流程下沒問題 (`STOPPED` -> `STARTED` bit set)，算是一種保護機制。
+
+## 3. 建議
+若您仍需要 **0 Hz (DC Mode)** 功能，建議在確認 Stop 功能正常後，將 `dds_api.h` 中關於 0 Hz 的判斷邏輯加回來：
+1.  `DDS_SetFrequency` 中允許輸入 0，並不做 Min Clamp。
+2.  當 Freq=0 時，強制 `u16Amplitude = 0` (有效振幅)。

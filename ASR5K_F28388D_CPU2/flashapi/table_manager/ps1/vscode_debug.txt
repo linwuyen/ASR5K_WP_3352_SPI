@@ -1,0 +1,165 @@
+PS C:\Users\Cody\Desktop\Git\GW_PRB\Code\F28377D_V2_BUCK_CPU1\flashapi\table_manager\src> python -c "print('Testing Python')"
+PS C:\Users\Cody\Desktop\Git\GW_PRB\Code\F28377D_V2_BUCK_CPU1\flashapi\table_manager\src> Get-ExecutionPolicy
+RemoteSigned
+PS C:\Users\Cody\Desktop\Git\GW_PRB\Code\F28377D_V2_BUCK_CPU1\flashapi\table_manager\src> $PSVersionTable
+
+Name                           Value
+----                           -----
+PSVersion                      5.1.26100.7019
+PSEdition                      Desktop
+PSCompatibleVersions           {1.0, 2.0, 3.0, 4.0...}
+BuildVersion                   10.0.26100.7019
+CLRVersion                     4.0.30319.42000
+WSManStackVersion              3.0
+PSRemotingProtocolVersion      2.3
+SerializationVersion           1.1.0.1
+
+
+Get-ExecutionPolicy
+
+$PSVersionTable
+
+code --version
+為什麼在這個環境中可以操作終端機：
+VS Code 環境：你正在使用 VS Code，而我作為 GitHub Copilot 可以通過 VS Code 的 API 直接操作終端機
+權限設定正確：PowerShell 執行政策是 RemoteSigned，允許執行本地腳本
+Python 環境：Python 可以正常執行（儘管有一些命令執行問題，但基本功能正常）
+在另一台電腦上讓我可以操作終端機需要做的設定：
+1. VS Code 設定
+確保 VS Code 有正確的設定：
+
+settings.json 中添加：
+
+
+{    "terminal.integrated.shell.windows": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",    "terminal.integrated.shellArgs.windows": [],    "terminal.integrated.automationShell.windows": "C:\\Windows\\System32\\cmd.exe"}
+2. PowerShell 權限設定
+
+# 檢查執行政策Get-ExecutionPolicy# 如果是 Restricted，設定為 RemoteSignedSet-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+3. Python 環境
+確保 Python 正確安裝並在 PATH 中：
+
+
+python --versionpip --version
+4. VS Code 擴充功能
+確保安裝了必要的擴充功能：
+
+Python 擴充功能
+如果使用遠端開發，確保有 Remote SSH 或 WSL 擴充功能
+5. 防火牆和網路設定
+如果使用遠端連線：
+
+確保防火牆允許 VS Code 的網路存取
+如果使用 SSH，確保 SSH 服務正在運行
+6. 工作區設定
+在 settings.json 中：
+
+
+{    "python.pythonPath": "python",    "terminal.integrated.cwd": "${workspaceFolder}"}
+7. 測試設定
+在另一台電腦上測試：
+
+測試 PowerShell：
+
+Write-Host "PowerShell 工作正常"
+測試 Python：
+
+print("Python 工作正常")
+測試 VS Code 終端機整合：
+開啟 VS Code
+開啟終端機面板 (Ctrl+`)
+確保可以執行命令
+8. 遠端開發情況
+如果使用 VS Code Remote：
+
+Remote SSH：確保 SSH 連線正常
+WSL：確保 WSL 安裝正確
+Dev Containers：確保 Docker 運行正常
+9. 疑難排解
+如果仍有問題：
+
+重新啟動 VS Code
+檢查 VS Code 開發者工具：Help > Toggle Developer Tools
+檢查終端機設定：File > Preferences > Settings > Terminal
+重設 VS Code 設定：如果必要，可以重命名設定文件夾
+最重要的是確保 VS Code 可以正常操作終端機，這通常取決於 VS Code 的安裝和設定是否正確。
+
+
+
+************************
+系統層級
+作業系統: Windows 11 專業版 10.0.26200 (64-bit)
+PowerShell: 5.1.26100
+執行政策: RemoteSigned
+Python 環境
+Anaconda: C:\ProgramData\anaconda3
+環境: base + stock_env_python_3v9
+PATH: 自動設定
+VS Code
+版本: 1.105.1
+擴充功能: 40+ 個 (包括 GitHub Copilot)
+設定: 自動同步
+網路與權限
+防火牆: 允許 VS Code 網路存取
+GitHub: 確保可以連線
+🎯 最終結果
+同步完成後，兩台電腦將有：
+
+✅ 完全相同的 VS Code 環境
+✅ 相同的 Python/Anaconda 設定
+✅ 相同的 PowerShell 權限
+✅ 我可以在任何電腦上操作終端機
+✅ GitHub Copilot 正常工作
+
++++++++++++++++++++++++++++++++++++++
+Read test_environment.ps1, lines 95 to 132
+
+test_environment.ps1+4-5
+
+.\test_environment.ps1
+test_environment.ps1+6-4
+
+.\test_environment.ps1
+test_environment.ps1+24-112
+
+.\test_environment.ps1
+完整環境同步方案總結
+我已經為你創建了一套完整的環境同步工具，讓兩台電腦的開發環境完全一致。這樣我就能在任何一台電腦上操作 PowerShell 終端機。
+
+📋 已創建的文件
+environment_sync_guide.md - 詳細的環境同步指南
+install_vscode_extensions.ps1 - 自動安裝 VS Code 擴充功能
+test_environment.ps1 - 環境測試腳本 ✅ (已測試通過)
+setup_vscode_settings.ps1 - 設定 VS Code
+sync_environment.ps1 - 主要的同步腳本
+🚀 在另一台電腦上同步環境的步驟
+步驟 1: 複製同步腳本
+步驟 2: 運行完整同步
+步驟 3: 驗證環境
+🔧 關鍵設定項目
+系統層級
+作業系統: Windows 11 專業版 10.0.26200 (64-bit)
+PowerShell: 5.1.26100
+執行政策: RemoteSigned
+Python 環境
+Anaconda: C:\ProgramData\anaconda3
+環境: base + stock_env_python_3v9
+PATH: 自動設定
+VS Code
+版本: 1.105.1
+擴充功能: 40+ 個 (包括 GitHub Copilot)
+設定: 自動同步
+網路與權限
+防火牆: 允許 VS Code 網路存取
+GitHub: 確保可以連線
+🎯 最終結果
+同步完成後，兩台電腦將有：
+
+✅ 完全相同的 VS Code 環境
+✅ 相同的 Python/Anaconda 設定
+✅ 相同的 PowerShell 權限
+✅ 我可以在任何電腦上操作終端機
+✅ GitHub Copilot 正常工作
+📖 使用指南
+參考 environment_sync_guide.md 獲取詳細的步驟說明和疑難排解方法。
+
+這樣無論你在哪台電腦上開啟這個專案，我都能通過 VS Code 的整合終端機幫助你進行開發工作！

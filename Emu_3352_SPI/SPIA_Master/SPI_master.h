@@ -316,6 +316,12 @@ typedef struct {
 
 extern ST_SPI_MASTER_CONTROL spiA_master;
 extern volatile u16 g_u16SpiMasterWaveRam[SPI_SINE_TABLE_SIZE];
+extern volatile u16 gDbgVerifyFailIndex;
+extern volatile u16 gDbgVerifyFailType;
+extern volatile u16 gDbgVerifyExpectedAddr;
+extern volatile u16 gDbgVerifyActualAddr;
+extern volatile u16 gDbgVerifyExpectedData;
+extern volatile u16 gDbgVerifyActualData;
 
 // ============================================================================
 // Fixed SPIA Wrapper APIs

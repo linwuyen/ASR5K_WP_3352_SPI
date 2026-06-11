@@ -33,7 +33,11 @@ Active design contracts, interfaces, and architecture specifications for runtime
 ## 3. Milestone Reports
 Historical checkpoint logs, completed test summaries, and experimental utility documentation.
 
+* **[M1_SPI_BASELINE.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M1_SPI_BASELINE.md)**: Baseline SPI Master-Slave communication report (PASS / CLOSED).
 * **[M2_FIFO.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M2_FIFO.md)**: Design log and status of the experimental FIFO utility.
+* **[M4_LEGACY_COMMAND_VALIDATION.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M4_LEGACY_COMMAND_VALIDATION.md)**: Parser-to-handler validation report (PASS / CLOSED).
+* **[M1_M4_VERIFIED_PATH.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M1_M4_VERIFIED_PATH.md)**: Specification of the end-to-end verified communication path.
+* **[M5_WAVE_DOWNLOAD_PLAN.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M5_WAVE_DOWNLOAD_PLAN.md)**: Design plan and interface specification for Wave Download Path (PREPARATION).
 * **Completed Test Reports / Checkpoints**: Historical logs and execution results.
 
 ---

@@ -38,7 +38,8 @@ typedef enum {
     SELFTEST_STATE_IDLE = 0,
     SELFTEST_STATE_START,
     SELFTEST_STATE_WAIT_RUNNING,
-    SELFTEST_STATE_WAIT_DONE
+    SELFTEST_STATE_WAIT_DONE,
+    SELFTEST_STATE_WAIT_SLAVE
 } SELFTEST_STATE_e;
 
 typedef struct {
@@ -746,6 +747,7 @@ static void completeCurrentTest(void)
         result->actual = 6U;
     }
 
+    SPIB_DebugCaptureSelfTest();
     calculateDelta(result);
     captureFaults(result);
     fault = validateCurrentTest(&failStep);
@@ -899,8 +901,13 @@ void Asr5kSpiSelfTest_Run(void)
         return;
     }
 
-    if (spiA_master.stTest.eStatus == SPI_TEST_STATUS_PASSED) {
+    if (s_state == SELFTEST_STATE_WAIT_SLAVE) {
         completeCurrentTest();
+        return;
+    }
+
+    if (spiA_master.stTest.eStatus == SPI_TEST_STATUS_PASSED) {
+        s_state = SELFTEST_STATE_WAIT_SLAVE;
     } else if (spiA_master.stTest.eStatus == SPI_TEST_STATUS_FAILED) {
         uint16_t fault = getDiagnosticFault();
         failSelfTest(ASR5K_SPI_FAIL_STEP_MASTER_STATUS,

@@ -242,24 +242,6 @@ extern volatile uint32_t gSpibRxM3OverrunCount;
 extern volatile uint16_t OUTPUT_ON;
 extern volatile uint32_t g_u32DebugLastTx;
 extern volatile uint32_t g_u32DebugLastValidResponse;
-extern volatile uint32_t gDbgEventSeq;
-extern volatile uint32_t gDbgRunSpiBEntry;
-extern volatile uint32_t gDbgRunSpiBExit;
-extern volatile uint32_t gDbgDmaDoneSeen;
-extern volatile uint32_t gDbgDmaDoneProcessed;
-extern volatile uint32_t gDbgParseEnter;
-extern volatile uint32_t gDbgParseExit;
-extern volatile uint32_t gDbgSelfTestCapture;
-extern volatile uint16_t gDbgCaptureReady;
-extern volatile uint16_t gDbgCaptureArmed;
-extern volatile uint16_t gDbgCapturePartial;
-extern volatile uint16_t gDbgCaptureActiveBuf;
-extern volatile uint16_t gDbgCaptureDmaControl;
-extern volatile uint16_t gDbgCaptureTransferCnt;
-extern volatile uint16_t gDbgCaptureBurstCnt;
-extern volatile uint16_t gDbgCaptureRxFifo;
-extern volatile uint16_t gDbgCapturePong0;
-extern volatile uint16_t gDbgCapturePong1;
 extern bool SPIB_RxDmaIsDone(void);
 extern void SPIB_RxDmaClearDone(void);
 extern void SPIB_RxDmaRestart(void);
@@ -268,7 +250,6 @@ extern void SPIB_RxDma_ConfigureRegFrame(uint16_t *pDst);
 extern void SPIB_RxDma_Start(void);
 extern void SPIB_RxDma_Stop(void);
 extern void SPIB_RxDma_ClearFlags(void);
-extern void SPIB_DebugCaptureSelfTest(void);
 #define SPIB_ClearModuleFault() do {                                     \
     spiB_slave.stDiag.eHealth = SPIB_HEALTH_OK;                          \
     spiB_slave.stDiag.eFaultSource = SPIB_FAULT_SOURCE_NONE;             \

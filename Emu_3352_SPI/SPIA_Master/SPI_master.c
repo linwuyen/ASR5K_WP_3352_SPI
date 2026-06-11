@@ -32,12 +32,6 @@ static u16 s_u16SineTableChecksum;
 
 #pragma DATA_SECTION(g_u16SpiMasterWaveRam, "spia_master_wave_ram")
 volatile u16 g_u16SpiMasterWaveRam[SPI_SINE_TABLE_SIZE];
-volatile u16 gDbgVerifyFailIndex;
-volatile u16 gDbgVerifyFailType;
-volatile u16 gDbgVerifyExpectedAddr;
-volatile u16 gDbgVerifyActualAddr;
-volatile u16 gDbgVerifyExpectedData;
-volatile u16 gDbgVerifyActualData;
 
 ST_SPI_MASTER_CONTROL spiA_master = {
   .pastStressTxBuf = s_astStressTxBuf,
@@ -1082,12 +1076,6 @@ static u16 verifyBlockResponses(const ST_SPI_MASTER_PACKET *pstTxBuf,
     u16 u16ExpAddr = (u16)(u16TxAddr + calcSpiMasterChecksum(u16RxData));
 
     if (u16RxAddr != u16ExpAddr) {
-      gDbgVerifyFailType = 1U;
-      gDbgVerifyFailIndex = u16Idx;
-      gDbgVerifyExpectedAddr = u16ExpAddr;
-      gDbgVerifyActualAddr = u16RxAddr;
-      gDbgVerifyExpectedData = u16TxData;
-      gDbgVerifyActualData = u16RxData;
       reportMasterError(SPIA_FAULT_SOURCE_PROTOCOL, (u16)SPIA_PROT_FAULT_CHECKSUM);
       recoverSpiMaster(&s_stSpiMaster);
       return 0U;
@@ -1096,12 +1084,6 @@ static u16 verifyBlockResponses(const ST_SPI_MASTER_PACKET *pstTxBuf,
     if (eVerifyMode != SPI_BLOCK_VERIFY_ADDR_ONLY) {
       if (u16TxAddr == Spi_Block_End_spi_addr) {
         if ((u16RxData != SPI_BLOCK_STATUS_BUSY) && (u16RxData != SPI_BLOCK_STATUS_READY)) {
-          gDbgVerifyFailType = 3U;
-          gDbgVerifyFailIndex = u16Idx;
-          gDbgVerifyExpectedAddr = u16ExpAddr;
-          gDbgVerifyActualAddr = u16RxAddr;
-          gDbgVerifyExpectedData = SPI_BLOCK_STATUS_BUSY;
-          gDbgVerifyActualData = u16RxData;
           reportMasterError(SPIA_FAULT_SOURCE_PROTOCOL, (u16)SPIA_PROT_FAULT_CHECKSUM);
           recoverSpiMaster(&s_stSpiMaster);
           return 0U;
@@ -1109,12 +1091,6 @@ static u16 verifyBlockResponses(const ST_SPI_MASTER_PACKET *pstTxBuf,
       } else if ((eVerifyMode == SPI_BLOCK_VERIFY_ADDR_DATA) ||
                  ((eVerifyMode == SPI_BLOCK_VERIFY_ADDR_NONZERO_DATA) && (u16TxData != 0U))) {
         if (u16RxData != u16TxData) {
-          gDbgVerifyFailType = 2U;
-          gDbgVerifyFailIndex = u16Idx;
-          gDbgVerifyExpectedAddr = u16ExpAddr;
-          gDbgVerifyActualAddr = u16RxAddr;
-          gDbgVerifyExpectedData = u16TxData;
-          gDbgVerifyActualData = u16RxData;
           reportMasterError(SPIA_FAULT_SOURCE_PROTOCOL, (u16)SPIA_PROT_FAULT_CHECKSUM);
           recoverSpiMaster(&s_stSpiMaster);
           return 0U;

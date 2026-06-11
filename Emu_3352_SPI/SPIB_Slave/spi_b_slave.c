@@ -59,26 +59,6 @@ volatile uint32_t g_u32DebugLastTx;
 volatile uint32_t g_u32DebugLastValidResponse;
 volatile uint32_t g_u32SpiSlaveLastRequest;
 
-volatile uint32_t gDbgEventSeq;
-volatile uint32_t gDbgRunSpiBEntry;
-volatile uint32_t gDbgRunSpiBExit;
-volatile uint32_t gDbgDmaDoneSeen;
-volatile uint32_t gDbgDmaDoneProcessed;
-volatile uint32_t gDbgParseEnter;
-volatile uint32_t gDbgParseExit;
-volatile uint32_t gDbgSelfTestCapture;
-
-volatile uint16_t gDbgCaptureReady;
-volatile uint16_t gDbgCaptureArmed;
-volatile uint16_t gDbgCapturePartial;
-volatile uint16_t gDbgCaptureActiveBuf;
-volatile uint16_t gDbgCaptureDmaControl;
-volatile uint16_t gDbgCaptureTransferCnt;
-volatile uint16_t gDbgCaptureBurstCnt;
-volatile uint16_t gDbgCaptureRxFifo;
-volatile uint16_t gDbgCapturePong0;
-volatile uint16_t gDbgCapturePong1;
-
 static void SPIB_RxRestartRegFrameDma(void);
 static void SPIB_RxDma_Configure(uint16_t *pDst, uint16_t burstSize, uint16_t transferSize);
 
@@ -314,23 +294,6 @@ void SPIB_RxDmaResetDebugCounters(void)
     gSpibRxErrorFlags = 0U;
 }
 
-void SPIB_DebugCaptureSelfTest(void)
-{
-    gDbgSelfTestCapture = ++gDbgEventSeq;
-    gDbgCaptureReady = (uint16_t)gSpibRxRegFrameReady;
-    gDbgCaptureArmed = (uint16_t)s_bSpibRxDmaArmed;
-    gDbgCapturePartial = (uint16_t)s_bSpibRxPartialPending;
-    gDbgCaptureActiveBuf = gSpibRxM3ActiveBuf;
-    gDbgCaptureDmaControl = HWREGH(SPIB_RX_DMA_CH_BASE + DMA_O_CONTROL);
-    gDbgCaptureTransferCnt =
-        HWREGH(SPIB_RX_DMA_CH_BASE + DMA_O_TRANSFER_COUNT);
-    gDbgCaptureBurstCnt =
-        HWREGH(SPIB_RX_DMA_CH_BASE + DMA_O_BURST_COUNT);
-    gDbgCaptureRxFifo =
-        (uint16_t)SPI_getRxFIFOStatus(SPIB_SYSTEM_BASE);
-    gDbgCapturePong0 = gSpibRxAltFrame[0];
-    gDbgCapturePong1 = gSpibRxAltFrame[1];
-}
 
 int16_t wr32bitsToSpi(HAL_U32PACK pHalPack) {
     g_u32DebugLastTx = pHalPack->u32All;
@@ -937,7 +900,6 @@ void pollReceiveFromSpi(void)
 
     if (bDmaDone)
     {
-        gDbgDmaDoneSeen = ++gDbgEventSeq;
         gSpibRxRegFrameReady = true;
         gSpibRxDmaDoneCount++;
         spiB_slave.stDiag.stDriver.stComm.u32RxTotal++;
@@ -970,9 +932,7 @@ void pollReceiveFromSpi(void)
             SPIB_RxDmaClearDone();
             SPIB_RxDmaRestart();
 
-            gDbgParseEnter = ++gDbgEventSeq;
             bParseOk = SPIB_ParseRegFrame(u16Cmd, u16Data);
-            gDbgParseExit = ++gDbgEventSeq;
 
             if (bParseOk)
             {
@@ -985,8 +945,6 @@ void pollReceiveFromSpi(void)
                 reportSlaveError(SPIB_FAULT_SOURCE_PROTOCOL,
                                  (uint16_t)SPIB_PROT_FAULT_FRAME_PARSE_FAIL);
             }
-
-            gDbgDmaDoneProcessed = ++gDbgEventSeq;
         }
 
         return;
@@ -1104,8 +1062,6 @@ static void updateSpibModuleState(void)
 
 void runSPIBslave(void)
 {
-    gDbgRunSpiBEntry = ++gDbgEventSeq;
-
     switch(spiB_slave.fsm) {
     case _INIT_SPI_AS_SLAVE:
         initSPIslave();
@@ -1139,5 +1095,4 @@ void runSPIBslave(void)
     }
 
     updateSpibModuleState();
-    gDbgRunSpiBExit = ++gDbgEventSeq;
 }

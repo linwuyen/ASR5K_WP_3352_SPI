@@ -176,20 +176,15 @@ typedef volatile struct {
     SSS_STAT stat;
     volatile ST_SPIB_MODULE_DIAG stDiag;
 
-    U32_PACK u32RxD[SIZE_OF_SSS_BUFFER];
-    uint16_t u16Rpush;
-    uint16_t u16Rpop;
-    uint16_t u16Rcnt;
-    uint16_t u16Reserved;
-
+    /* u32RxD / u16Rpush / u16Rpop / u16Rcnt ring-buffer removed; replaced by
+     * SPI_FIFO_t s_fallbackFifo in spi_b_slave.c. */
     uint32_t u32TimeMark;
     uint32_t u32TimeStamp;
     uint32_t u32Timeout;
 
     /* Diagnostic fields */
     uint32_t u32ResetCount;
-    uint32_t u32MaxRcnt;
-    uint16_t u16LastRcntBeforeReset;
+    /* u32MaxRcnt / u16LastRcntBeforeReset removed with ring buffer. */
 
     /* Fast/block direct path diagnostics */
     uint32_t u32FastPathCount;
@@ -226,19 +221,13 @@ typedef ST_SPI_SLAVE * HAL_SPI_SLAVE;
 
 extern ST_SPI_SLAVE spiB_slave;
 extern volatile uint16_t g_u16SpiBlockRam[SIZE_OF_SPI_BLOCK_RAM];
-extern volatile uint16_t gSpibRxRegFrame[SPIB_RX_REG_WORDS];
-extern volatile bool gSpibRxRegFrameReady;
+/* Raw ping-pong globals (gSpibRxRegFrame, gSpibRxAltFrame, gSpibRxM3*) removed;
+ * replaced by SpibDmaPingPong_t s_rxPingPong in spi_b_slave.c. */
 extern volatile uint32_t gSpibRxDmaDoneCount;
 extern volatile uint32_t gSpibRxParseOkCount;
 extern volatile uint32_t gSpibRxParseFailCount;
 extern volatile uint32_t gSpibRxDmaRestartCount;
 extern volatile uint16_t gSpibRxErrorFlags;
-/* M3: Ping/Pong alternate buffer and counters */
-extern volatile uint16_t gSpibRxAltFrame[SPIB_RX_REG_WORDS];
-extern volatile uint16_t gSpibRxM3ActiveBuf;
-extern volatile uint32_t gSpibRxM3PingFullCount;
-extern volatile uint32_t gSpibRxM3PongFullCount;
-extern volatile uint32_t gSpibRxM3OverrunCount;
 extern volatile uint16_t OUTPUT_ON;
 extern volatile uint32_t g_u32DebugLastTx;
 extern volatile uint32_t g_u32DebugLastValidResponse;

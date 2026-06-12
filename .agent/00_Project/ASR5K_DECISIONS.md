@@ -1,23 +1,73 @@
-# ASR5K Architecture & Frozen Decisions
+# ASR5K Approved Decisions
 
-This document logs all frozen architecture decisions and restrictions. These decisions are critical to maintaining system stability, hardware compatibility, and compatibility with the production ASR5K environment.
+## Status
 
-## 1. Architecture Decisions
-* **D003 [EMIF1 Runtime Source]:** The runtime wave table and waveform generation logic read directly from EMIF1 SDRAM. CPU2 owns the DDS runtime using this source.
-* **D004 [Output ON Protection]:** System output initialization and activation (Output ON) is prohibited while downloading new waveform tables.
-* **D005 [RxFrame Ping/Pong Buffer]:** The official SPIB RX high-speed download path uses a Ping/Pong buffer structure (Ping/Pong frame arrays) to support streaming. The FIFO circular buffer (`SPI_FIFO_t`) is reserved strictly as an experimental utility and must not be used in the production download path.
+- Governance state: ACTIVE
+- Decision state: APPROVED AND FROZEN
+- Scope: ASR5K production architecture
 
-## 2. DMA Ownership
-* **D002 [DMA CH3]:** Channel 3 of the DMA controller is exclusively owned by SPIB RX. No other module or task may reconfigure or trigger DMA Channel 3.
-* **D002b [DMA CH4]:** Channel 4 of the DMA controller is reserved and owned by SPIB TX.
+These decisions are the approved interpretation of the controlled architecture
+set. Candidate documents, milestones, research notes, handoffs, workflows, and
+implementation experiments cannot override them.
 
-## 3. Memory Ownership
-* **D003 [EMIF1 SDRAM]:** EMIF1 SDRAM memory blocks are dedicated to storing Wave Tables. CPU1 writes to this region during download, and CPU2 reads from this region during real-time wave generation.
-* **D006 [Ping/Pong Memory Section]:** The Ping/Pong buffers and their management structures are mapped to the dedicated linker section `spib_pingpong_state` inside `RAMGS6` to prevent `.bss` overflow.
+## Frozen Architecture Decisions
 
-## 4. Protocol Ownership
-* **D001 [Legacy SPIB Protocol]:** The SPIB Slave protocol must remain compatible with the production AM3352 SPI protocol contract (fixed-frame registers). Any modifications to packet header magic, framing, or register mapping require explicit system-wide approval.
-* **D007 [Ping/Pong Data Format]:** The Ping/Pong buffer content strictly uses the legacy register frame format (`cmd` + `data`). It must not introduce any packet-style protocol wrapping or headers.
+| ID | Approved Decision |
+|---|---|
+| FD-001 | Legacy Register Protocol is the production protocol. |
+| FD-002 | SPIB RX owns DMA CH3. |
+| FD-003 | SPIB TX owns DMA CH4. |
+| FD-004 | DMA CH5 is reserved. |
+| FD-005 | DMA CH6 is reserved. |
+| FD-006 | EMIF1 SDRAM is the Wave Runtime Source. |
+| FD-007 | CPU1 owns system control, parser, and download path. |
+| FD-008 | CPU2 owns DDS runtime. |
+| FD-009 | W25Q64 is for Boot, OTA, and Maintenance only. |
+| FD-010 | W25Q64 is not a DDS runtime source. |
+| FD-011 | D11 Packet Protocol is candidate only. |
+| FD-012 | D04, D05, and D07 override older PDF assumptions for wave pipeline, EMIF1 memory use, and DDS runtime behavior. |
+| FD-013 | Research and milestone documents cannot create architecture decisions. |
 
-## 5. Runtime Restrictions
-* **D004 [Output ON Protection]:** The system enforces protection prohibiting `OUTPUT_ON` transitions or state changes during flash writes or waveform downloads to avoid high-power transient hazards.
+## Ownership Consequences
+
+- CPU1 receives and parses production commands, controls system state, and owns
+  the waveform download/write path.
+- CPU2 consumes approved waveform data from EMIF1 SDRAM and owns DDS runtime
+  execution.
+- CPU1 may write and manage EMIF1 waveform data; this does not make CPU1 the DDS
+  runtime owner.
+- CPU2 runtime reads from EMIF1 SDRAM. It must not use W25Q64 as the live DDS
+  waveform source.
+- DMA CH5 and CH6 have no production owner. Allocation requires a new approved
+  architecture decision.
+- Packet framing described by D11 or older communication documents must not be
+  implemented as the production protocol without explicit approval.
+
+## Additional Approved Constraints
+
+| ID | Approved Constraint |
+|---|---|
+| AC-001 | Ping-pong buffering is the production buffering model; FIFO remains experimental unless separately approved. |
+| AC-002 | Runtime output restrictions and validation policy remain governed by D04 and D10. |
+| AC-003 | Linker placement and shared-memory details must follow the currently approved memory architecture and verified linker evidence. |
+
+## Scoped PDF Override
+
+Formal Product Documents remain Tier 1. However, where older PDF assumptions
+conflict with later controlled detail for the wave data pipeline, EMIF1 memory
+use, or DDS runtime behavior, FD-012 explicitly selects D04, D05, and D07 for
+those subjects. This is a scoped approved override, not a general demotion of
+formal product documentation.
+
+## Change Control
+
+Changing any frozen decision requires explicit project approval and a matching
+update to:
+
+1. `ARCHITECTURE_AUTHORITY.md`
+2. `ASR5K_DECISIONS.md`
+3. `DOCUMENT_STATUS_REGISTRY.md`
+4. `ARCHITECTURE_CONFLICT_REGISTER.md`
+
+An implementation, test result, milestone note, research document, or candidate
+protocol cannot change a frozen decision by itself.

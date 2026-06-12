@@ -10,15 +10,14 @@
 #include "driverlib.h"
 #include "timetask.h"
 
-// Include refactored SPI Master module
+// SPI modules: master task, slave task, self-test automation.
+// spi_fifo / spi_pingpong are internal details of spi_b_slave and are
+// not included here.
 #include "SPIA_Master/SPI_master.h"
 #include "SPIB_Slave/spi_slave.h"
-#include "SPIB_Slave/spi_fifo.h"
-#include "SPIB_Slave/spi_pingpong.h"
 #include "asr5k_spi_selftest.h"
 
 
-uint16_t cnt;
 
 // Main
 
@@ -65,19 +64,11 @@ void main(void) {
   EINT;
   ERTM;
 
-#if ASR5K_ENABLE_FIFO_SELFTEST
-  (void)FIFO_Test_Run();
-#endif
-
-#if ASR5K_ENABLE_PINGPONG_SELFTEST
-  (void)RxFramePingPong_Test_Run();
-#endif
-
   //
   // Loop Forever
   //
   for (;;) {
-      cnt++;
+
     // Run the production Slave logic before the Master issues the next frame.
     runSPIBslave();
     // Initialize on first call, then execute the SPIA Master task.

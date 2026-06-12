@@ -15,20 +15,26 @@
 #include "device.h"
 #include "inc/hw_spi.h"
 #include "spi_slave.h"
+#include "spi_fifo.h"
+#include "spi_pingpong.h"
 #include "common.h"
 #include "shareram.h"
 
 volatile uint16_t OUTPUT_ON;
 
 /* -----------------------------------------------------------------------
- * M3 per-frame ping-pong DMA buffers.
- * Ping = gSpibRxRegFrame[2], Pong = gSpibRxAltFrame[2].
- * DMA burst = 2 words, transfer = 1 burst done after every single frame.
+ * DMA ping-pong abstraction (replaces the six raw globals from M3 baseline).
  * ----------------------------------------------------------------------- */
-#pragma DATA_SECTION(gSpibRxRegFrame, "spib_slave_state")
-#pragma DATA_ALIGN(gSpibRxRegFrame, 2)
-volatile uint16_t gSpibRxRegFrame[SPIB_RX_REG_WORDS];
-volatile bool gSpibRxRegFrameReady;
+#pragma DATA_SECTION(s_rxPingPong, "spib_slave_state")
+#pragma DATA_ALIGN(s_rxPingPong, 2)
+static SpibDmaPingPong_t s_rxPingPong;
+
+#pragma DATA_SECTION(s_fallbackFifo, "spib_slave_state")
+static SPI_FIFO_t s_fallbackFifo;
+
+/* Last received cmd/data words, kept for error reporting. */
+static uint16_t s_u16LastRxCmd  = 0U;
+static uint16_t s_u16LastRxData = 0U;
 
 #pragma DATA_SECTION(gSpibRxDmaDoneCount, "spib_slave_state")
 volatile uint32_t gSpibRxDmaDoneCount;
@@ -41,7 +47,12 @@ volatile uint32_t gSpibRxDmaRestartCount;
 #pragma DATA_SECTION(gSpibRxErrorFlags, "spib_slave_state")
 volatile uint16_t gSpibRxErrorFlags;
 
-/* M3 Pong buffer */
+/* Restore M3 RX structures to keep compatibility */
+#pragma DATA_SECTION(gSpibRxRegFrame, "spib_slave_state")
+#pragma DATA_ALIGN(gSpibRxRegFrame, 2)
+volatile uint16_t gSpibRxRegFrame[SPIB_RX_REG_WORDS];
+volatile bool gSpibRxRegFrameReady;
+
 #pragma DATA_SECTION(gSpibRxAltFrame, "spib_slave_state")
 #pragma DATA_ALIGN(gSpibRxAltFrame, 2)
 volatile uint16_t gSpibRxAltFrame[SPIB_RX_REG_WORDS];
@@ -53,6 +64,36 @@ volatile uint32_t gSpibRxM3PingFullCount;
 volatile uint32_t gSpibRxM3PongFullCount;
 #pragma DATA_SECTION(gSpibRxM3OverrunCount, "spib_slave_state")
 volatile uint32_t gSpibRxM3OverrunCount;
+
+#pragma DATA_SECTION(g_u16SpibRxPacketBuf, "spib_rx_wave_buf0")
+volatile uint16_t g_u16SpibRxPacketBuf[1024];
+
+#pragma DATA_SECTION(s_bSpibRxInWaveMode, "spib_slave_state")
+static bool s_bSpibRxInWaveMode = false;
+#pragma DATA_SECTION(s_u16WaveFramesRemaining, "spib_slave_state")
+static uint16_t s_u16WaveFramesRemaining = 0U;
+#pragma DATA_SECTION(s_u16WaveFramesCurrentBlock, "spib_slave_state")
+static uint16_t s_u16WaveFramesCurrentBlock = 0U;
+/* Wave-block stall watchdog: DMA TRANSFER_COUNT progress tracking so an
+ * aborted burst drains the partial block instead of locking the RX path. */
+static uint16_t s_u16WaveLastXferCount = 0xFFFFU;
+static uint32_t s_u32WaveStallTicks = 0U;
+/* Previous RX cmd word, used by the wave burst entry detector. */
+static uint16_t s_u16PrevRxCmd = 0xFFFFU;
+
+/* Wave transport diagnostics (CCS watch):
+ * [0] entry count        [1] prev cmd captured when 0x3001 seen
+ * [2] drain count        [3] block done count
+ * [4] page at 0x3001     [5] last drained frame count */
+#pragma DATA_SECTION(gSpibWaveDbg, "spib_slave_state")
+volatile uint16_t gSpibWaveDbg[6];
+
+/* Slave-side cmd sequence capture: records the first 10 cmd words seen
+ * after each page-select (0x0958) frame, so the actual frame order at
+ * the slave can be compared against the master MOSI log. */
+#pragma DATA_SECTION(gSpibWaveSeq, "spib_slave_state")
+volatile uint16_t gSpibWaveSeq[10];
+static uint16_t s_u16WaveSeqIdx = 0xFFFFU;   /* 0xFFFF = capture idle */
 
 // Global debug variables
 volatile uint32_t g_u32DebugLastTx;
@@ -77,11 +118,8 @@ volatile uint16_t g_u16SpiBlockRam[SIZE_OF_SPI_BLOCK_RAM];
 
 #pragma DATA_SECTION(spiB_slave, "spib_slave_state")
 ST_SPI_SLAVE spiB_slave = {
-    .fsm = _INIT_SPI_AS_SLAVE,
+    .fsm  = _INIT_SPI_AS_SLAVE,
     .stat = _NO_STAT_OF_SSS,
-    .u16Rpush = 0,
-    .u16Rpop = 0,
-    .u16Rcnt = 0,
 };
 
 
@@ -123,8 +161,8 @@ static void reportSlaveError(SPIB_FAULT_SOURCE_e eSource, uint16_t u16FaultVal)
         spiB_slave.stDiag.u16FaultCode = u16FaultVal;
 
         uint16_t step = 0U;
-        uint16_t d0 = gSpibRxRegFrame[0];
-        uint16_t d1 = gSpibRxRegFrame[1];
+        uint16_t d0 = s_u16LastRxCmd;
+        uint16_t d1 = s_u16LastRxData;
 
         if (eSource == SPIB_FAULT_SOURCE_DRIVER)
         {
@@ -169,21 +207,16 @@ void initNativeSpiSlave(uint32_t u32Base)
 
 static void initSpibRxDma(void)
 {
-    uint16_t *pDstAddr = (uint16_t *)&gSpibRxRegFrame[0];
+    SpibPingPong_Init(&s_rxPingPong);
+    uint16_t *pDstAddr = (uint16_t *)SpibPingPong_GetDmaDst(&s_rxPingPong);
 
-    gSpibRxRegFrame[0] = 0U;
-    gSpibRxRegFrame[1] = 0U;
-    gSpibRxRegFrameReady = false;
     s_bSpibRxDmaArmed = false;
     s_bSpibRxPartialPending = false;
 
-    /* M3: reset Pong buffer and alternation counters */
-    gSpibRxAltFrame[0]      = 0U;
-    gSpibRxAltFrame[1]      = 0U;
-    gSpibRxM3ActiveBuf      = 0U;   /* start: DMA targets Ping */
-    gSpibRxM3PingFullCount  = 0U;
-    gSpibRxM3PongFullCount  = 0U;
-    gSpibRxM3OverrunCount   = 0U;
+    s_bSpibRxInWaveMode = false;
+    s_u16WaveFramesRemaining = 0U;
+    s_u16WaveFramesCurrentBlock = 0U;
+    s_u16PrevRxCmd = 0xFFFFU;
 
     DMA_disableTrigger(SPIB_RX_DMA_CH_BASE);
     DMA_disableInterrupt(SPIB_RX_DMA_CH_BASE);
@@ -219,7 +252,6 @@ bool SPIB_RxDmaIsDone(void)
 
 void SPIB_RxDmaClearDone(void)
 {
-    gSpibRxRegFrameReady = false;
     SPIB_RxDma_ClearFlags();
     SPI_clearInterruptStatus(SPIB_SYSTEM_BASE, SPI_INT_RXFF | SPI_INT_RX_OVERRUN);
 }
@@ -256,13 +288,10 @@ void SPIB_RxDma_ClearFlags(void)
 
 static void SPIB_RxRestartRegFrameDma(void)
 {
-    uint16_t *pDstAddr = (gSpibRxM3ActiveBuf == 0U) ?
-                         (uint16_t *)&gSpibRxRegFrame[0] :
-                         (uint16_t *)&gSpibRxAltFrame[0];
+    uint16_t *pDstAddr = (uint16_t *)SpibPingPong_GetDmaDst(&s_rxPingPong);
     uint16_t *pSrcAddr = (uint16_t *)(SPIB_SYSTEM_BASE + SPI_O_RXBUF);
 
     gSpibRxDmaRestartCount++;
-    gSpibRxRegFrameReady = false;
 
     DMA_disableTrigger(SPIB_RX_DMA_CH_BASE);
     DMA_stopChannel(SPIB_RX_DMA_CH_BASE);
@@ -282,6 +311,50 @@ static void SPIB_RxRestartRegFrameDma(void)
 
 void SPIB_RxDmaRestart(void)
 {
+    SPIB_RxRestartRegFrameDma();
+}
+
+/* ---- Wave block transport stall recovery (M5R Phase2) -------------------
+ * If the master aborts mid-block, the block DMA never completes and the
+ * RX path would lock up.  Drain the frames that did arrive and restore
+ * the normal 2-word RegFrame path.
+ * ------------------------------------------------------------------------ */
+static void SPIB_RxWaveDrainAndExit(uint16_t u16FramesReceived)
+{
+    uint16_t i;
+
+    gSpibWaveDbg[2]++;
+    gSpibWaveDbg[5] = u16FramesReceived;
+
+    DMA_disableTrigger(SPIB_RX_DMA_CH_BASE);
+    DMA_stopChannel(SPIB_RX_DMA_CH_BASE);
+    SPIB_RxDmaClearDone();
+
+    for (i = 0U; i < u16FramesReceived; i++)
+    {
+        uint16_t u16Cmd  = g_u16SpibRxPacketBuf[i * 2U];
+        uint16_t u16Data = g_u16SpibRxPacketBuf[i * 2U + 1U];
+
+        s_u16LastRxCmd  = u16Cmd;
+        s_u16LastRxData = u16Data;
+
+        if (SPIB_ParseRegFrame(u16Cmd, u16Data))
+        {
+            gSpibRxParseOkCount++;
+        }
+        else
+        {
+            gSpibRxParseFailCount++;
+            gSpibRxErrorFlags |= SPIB_RX_ERR_FRAME_PARSE_FAIL;
+            reportSlaveError(SPIB_FAULT_SOURCE_PROTOCOL,
+                             (uint16_t)SPIB_PROT_FAULT_FRAME_PARSE_FAIL);
+        }
+    }
+    gSpibRxDmaDoneCount += u16FramesReceived;
+
+    s_bSpibRxInWaveMode = false;
+    s_u16WaveFramesRemaining = 0U;
+    s_u16WaveFramesCurrentBlock = 0U;
     SPIB_RxRestartRegFrameDma();
 }
 
@@ -484,7 +557,7 @@ static uint16_t tryHandleFastPath(uint16_t u16Address, uint16_t u16Data)
     }
 
     /* Route to Wave Download Service if it handles this address */
-    if (WaveDownload_HandleWrite(u16Address, u16Data, &u16RespData))
+    if (WaveDownload_HandleWrite(u16Address, u16Data, &u16RespData, OUTPUT_ON))
     {
         writeDirectSpiResponse(u16Address, u16RespData);
         spiB_slave.u32FastPathCount++;
@@ -570,27 +643,14 @@ static bool SPIB_ParseLegacyRegFrame(uint16_t u16Cmd, uint16_t u16Data)
     }
 
     spiB_slave.u32FallbackPathCount++;
-    if (SIZE_OF_SSS_BUFFER > spiB_slave.u16Rcnt)
     {
-        spiB_slave.u32RxD[spiB_slave.u16Rpush].u32All =
-            ((uint32_t)u16Cmd << 16) | u16Data;
-
-        spiB_slave.u16Rpush++;
-        if (SIZE_OF_SSS_BUFFER == spiB_slave.u16Rpush)
+        SPI_FRAME_t frame;
+        frame.cmd  = u16Cmd;
+        frame.data = u16Data;
+        if (SPI_FIFO_Push(&s_fallbackFifo, &frame))
         {
-            spiB_slave.u16Rpush = 0U;
+            return true;
         }
-
-        spiB_slave.u16Rcnt++;
-        if (spiB_slave.u16Rcnt > spiB_slave.u32MaxRcnt)
-        {
-            spiB_slave.u32MaxRcnt = spiB_slave.u16Rcnt;
-        }
-
-        return true;
-    }
-    else
-    {
         spiB_slave.stat |= _SSS_GET_ERROR;
         reportSlaveError(SPIB_FAULT_SOURCE_SERVICE, (uint16_t)1U);
         return false;
@@ -829,6 +889,7 @@ void initSPIslave(void)
 
     DMA_initController();
     initNativeSpiSlave(SPIB_SYSTEM_BASE);
+    SPI_FIFO_Init(&s_fallbackFifo);
     initSpibRxDma();
     WaveDownload_Init();
 
@@ -840,7 +901,7 @@ void initSPIslave(void)
     s_sSpiParser = (ST_WR_PARSER) {
       .wrfunc = wr32bitsToSpi,
       .rdfunc = rd32bitsFromSpi,
-      .pRdata = (HAL_U32PACK)&spiB_slave.u32RxD[0],
+      .pRdata = (HAL_U32PACK)0,
     };
 
     pushNullIntoTxD(&s_sSpiParser);
@@ -862,8 +923,6 @@ void initSPIslave(void)
     CommDiag_Init((ST_COMM_DIAG *)&spiB_slave.stDiag.stService.stComm);
 
     spiB_slave.u32ResetCount = 0U;
-    spiB_slave.u32MaxRcnt = 0U;
-    spiB_slave.u16LastRcntBeforeReset = 0U;
     spiB_slave.u32FastPathCount = 0U;
     spiB_slave.u32FallbackPathCount = 0U;
     spiB_slave.u32BlockRxCount = 0U;
@@ -888,6 +947,7 @@ void initSPIslave(void)
 
     SET_SSS_STAT(_INIT_SSS_READY);
 }
+
 void pollReceiveFromSpi(void)
 {
     uint32_t u32SpiIntStatus;
@@ -900,26 +960,107 @@ void pollReceiveFromSpi(void)
 
     if (bDmaDone)
     {
-        gSpibRxRegFrameReady = true;
-        gSpibRxDmaDoneCount++;
         spiB_slave.stDiag.stDriver.stComm.u32RxTotal++;
 
+        if (s_bSpibRxInWaveMode)
         {
+            uint16_t i;
+            bool bAllParseOk = true;
+            uint16_t u16ParsedFrames = s_u16WaveFramesCurrentBlock;
+
+            gSpibWaveDbg[3]++;
+            s_bSpibRxInWaveMode = false;
+
+            for (i = 0U; i < u16ParsedFrames; i++)
+            {
+                uint16_t u16Cmd  = g_u16SpibRxPacketBuf[i * 2U];
+                uint16_t u16Data = g_u16SpibRxPacketBuf[i * 2U + 1U];
+
+                s_u16LastRxCmd  = u16Cmd;
+                s_u16LastRxData = u16Data;
+
+                if (u16Cmd != 0xFFFFU)
+                {
+                    g_u32SpiSlaveLastRequest =
+                        ((uint32_t)u16Cmd << 16) | (uint32_t)u16Data;
+                }
+
+                bool bParseOk = SPIB_ParseRegFrame(u16Cmd, u16Data);
+                if (bParseOk)
+                {
+                    gSpibRxParseOkCount++;
+                }
+                else
+                {
+                    gSpibRxParseFailCount++;
+                    bAllParseOk = false;
+                }
+            }
+
+            SPIB_RxDmaClearDone();
+
+            /* Keep per-frame counter semantics so the self-test
+             * invariants (parse_ok == dma_done, dma_restart >= dma_done)
+             * stay valid in block mode. */
+            gSpibRxDmaDoneCount += u16ParsedFrames;
+
+            s_u16WaveFramesRemaining -= u16ParsedFrames;
+
+            if (s_u16WaveFramesRemaining > 0U)
+            {
+                uint16_t u16NextBlock = (s_u16WaveFramesRemaining > 512U) ? 512U : s_u16WaveFramesRemaining;
+
+                s_bSpibRxInWaveMode = true;
+                s_u16WaveFramesCurrentBlock = u16NextBlock;
+                gSpibRxDmaRestartCount += u16NextBlock;
+
+                uint16_t *pDst = (uint16_t *)g_u16SpibRxPacketBuf;
+                SPIB_RxDma_Configure(pDst, 2U, u16NextBlock);
+
+                DMA_clearTriggerFlag(SPIB_RX_DMA_CH_BASE);
+                DMA_clearErrorFlag(SPIB_RX_DMA_CH_BASE);
+                DMA_startChannel(SPIB_RX_DMA_CH_BASE);
+
+                /* refresh stall watchdog for the new block */
+                s_u16WaveLastXferCount = 0xFFFFU;
+                s_u32WaveStallTicks = U32_UPCNTS;
+            }
+            else
+            {
+                SPIB_RxRestartRegFrameDma();
+            }
+
+            if (!bAllParseOk)
+            {
+                gSpibRxErrorFlags |= SPIB_RX_ERR_FRAME_PARSE_FAIL;
+                reportSlaveError(SPIB_FAULT_SOURCE_PROTOCOL,
+                                 (uint16_t)SPIB_PROT_FAULT_FRAME_PARSE_FAIL);
+            }
+        }
+        else
+        {
+            volatile uint16_t *pFrame;
             uint16_t u16Cmd;
             uint16_t u16Data;
             bool bParseOk;
 
-            if (gSpibRxM3ActiveBuf == 0U)
+            gSpibRxDmaDoneCount++;
+
+            pFrame  = SpibPingPong_SwapAndGetFrame(&s_rxPingPong);
+            u16Cmd  = pFrame[0];
+            u16Data = pFrame[1];
+
+            s_u16LastRxCmd  = u16Cmd;
+            s_u16LastRxData = u16Data;
+
+            /* Sequence capture: restart on every page-select frame. */
+            if (u16Cmd == (uint16_t)WAVE_PAGE_SELECT_ADDR)
             {
-                u16Cmd  = gSpibRxRegFrame[0];
-                u16Data = gSpibRxRegFrame[1];
-                gSpibRxM3PingFullCount++;
+                s_u16WaveSeqIdx = 0U;
             }
-            else
+            if (s_u16WaveSeqIdx < 10U)
             {
-                u16Cmd  = gSpibRxAltFrame[0];
-                u16Data = gSpibRxAltFrame[1];
-                gSpibRxM3PongFullCount++;
+                gSpibWaveSeq[s_u16WaveSeqIdx++] = u16Cmd;
             }
 
             if (u16Cmd != 0xFFFFU)
@@ -928,9 +1069,7 @@ void pollReceiveFromSpi(void)
                     ((uint32_t)u16Cmd << 16) | (uint32_t)u16Data;
             }
 
-            gSpibRxM3ActiveBuf ^= 1U;
             SPIB_RxDmaClearDone();
-            SPIB_RxDmaRestart();
 
             bParseOk = SPIB_ParseRegFrame(u16Cmd, u16Data);
 
@@ -945,6 +1084,57 @@ void pollReceiveFromSpi(void)
                 reportSlaveError(SPIB_FAULT_SOURCE_PROTOCOL,
                                  (uint16_t)SPIB_PROT_FAULT_FRAME_PARSE_FAIL);
             }
+
+            /* Wave burst entry: a window write arriving with RX FIFO
+             * backlog means the master is streaming faster than the
+             * per-frame path can absorb (measured: slave keeps only 1
+             * frame in 10 during a burst, so waiting for a specific
+             * next address can never work).  Slow single writes
+             * (Test6) never build backlog and stay on the 2-word
+             * path.  Entry works from any window address; the number
+             * of remaining frames is derived from the address. */
+            if (u16Cmd == (uint16_t)(WAVE_DATA_WINDOW_BASE + 1U))
+            {
+                gSpibWaveDbg[1] = s_u16PrevRxCmd;
+                gSpibWaveDbg[4] = g_waveDownload.u16SelectedPage;
+            }
+
+            if (bParseOk &&
+                (u16Cmd >= (uint16_t)WAVE_DATA_WINDOW_BASE) &&
+                (u16Cmd <= (uint16_t)WAVE_DATA_WINDOW_LIMIT) &&
+                (g_waveDownload.u16SelectedPage != WAVE_PAGE_INVALID) &&
+                (eRxFifoLevel >= SPI_FIFO_RX4) &&
+                ((uint16_t)(u16Cmd - WAVE_DATA_WINDOW_BASE) <
+                 (uint16_t)(WAVE_SAMPLES_PER_PAGE - 1U)))
+            {
+                gSpibWaveDbg[0]++;
+                /* Samples up to this address came via the 2-word path
+                 * (with possible losses); the rest go block mode. */
+                s_u16WaveFramesRemaining =
+                    (uint16_t)(WAVE_SAMPLES_PER_PAGE -
+                               (uint16_t)(u16Cmd - WAVE_DATA_WINDOW_BASE) - 1U);
+                uint16_t u16NextBlock = (s_u16WaveFramesRemaining > 512U) ? 512U : s_u16WaveFramesRemaining;
+
+                s_bSpibRxInWaveMode = true;
+                s_u16WaveFramesCurrentBlock = u16NextBlock;
+                gSpibRxDmaRestartCount += u16NextBlock;
+
+                uint16_t *pDst = (uint16_t *)g_u16SpibRxPacketBuf;
+                SPIB_RxDma_Configure(pDst, 2U, u16NextBlock);
+
+                DMA_clearTriggerFlag(SPIB_RX_DMA_CH_BASE);
+                DMA_clearErrorFlag(SPIB_RX_DMA_CH_BASE);
+                DMA_startChannel(SPIB_RX_DMA_CH_BASE);
+
+                s_u16WaveLastXferCount = 0xFFFFU;
+                s_u32WaveStallTicks = U32_UPCNTS;
+            }
+            else
+            {
+                SPIB_RxRestartRegFrameDma();
+            }
+
+            s_u16PrevRxCmd = u16Cmd;
         }
 
         return;
@@ -953,14 +1143,26 @@ void pollReceiveFromSpi(void)
     if ((u32SpiIntStatus & (SPI_INT_RX_OVERRUN | SPI_INT_RXFF_OVERFLOW)) != 0U)
     {
         gSpibRxErrorFlags |= SPIB_RX_ERR_RX_FIFO_OVERFLOW;
-        spiB_slave.stat |= _SSS_GET_ERROR;
 
-        reportSlaveError(SPIB_FAULT_SOURCE_DRIVER,
-                         (uint16_t)SPIB_DRV_FAULT_FIFO_OVERFLOW);
+        if (s_bSpibRxInWaveMode)
+        {
+            /* Words may have been lost (sample count will show it),
+             * but aborting the block reception would lose far more.
+             * Clear the latched status and keep the block DMA running. */
+            SPI_clearInterruptStatus(SPIB_SYSTEM_BASE,
+                                     SPI_INT_RXFF | SPI_INT_RX_OVERRUN);
+        }
+        else
+        {
+            spiB_slave.stat |= _SSS_GET_ERROR;
 
-        SPIB_RxDmaClearDone();
-        SPI_resetRxFIFO(SPIB_SYSTEM_BASE);
-        SPIB_RxDmaRestart();
+            reportSlaveError(SPIB_FAULT_SOURCE_DRIVER,
+                             (uint16_t)SPIB_DRV_FAULT_FIFO_OVERFLOW);
+
+            SPIB_RxDmaClearDone();
+            SPI_resetRxFIFO(SPIB_SYSTEM_BASE);
+            SPIB_RxDmaRestart();
+        }
         return;
     }
 
@@ -972,8 +1174,36 @@ void pollReceiveFromSpi(void)
         reportSlaveError(SPIB_FAULT_SOURCE_DRIVER,
                          (uint16_t)SPIB_DRV_FAULT_DMA_ERROR);
 
+        s_bSpibRxInWaveMode = false;
+        s_u16WaveFramesRemaining = 0U;
         SPIB_RxDmaClearDone();
         SPIB_RxDmaRestart();
+        return;
+    }
+
+    /* While a wave block is filling, the 2-word partial/idle logic below
+     * must not run (it would false-trigger and restart the DMA mid-block).
+     * Instead watch DMA TRANSFER_COUNT progress: if the stream stalls,
+     * drain the frames that arrived and restore the normal path. */
+    if (s_bSpibRxInWaveMode)
+    {
+        uint16_t u16XferLeft =
+            HWREGH(SPIB_RX_DMA_CH_BASE + DMA_O_TRANSFER_COUNT);
+
+        if (u16XferLeft != s_u16WaveLastXferCount)
+        {
+            s_u16WaveLastXferCount = u16XferLeft;
+            s_u32WaveStallTicks = U32_UPCNTS;
+        }
+        else if (getElapsedTicks(s_u32WaveStallTicks) >
+                 SPIB_RX_DMA_TIMEOUT_TICKS)
+        {
+            /* TRANSFER_COUNT counts down from (block-1); completed
+             * frames = (block-1) - count. */
+            uint16_t u16Frames = (uint16_t)(s_u16WaveFramesCurrentBlock
+                                            - 1U - u16XferLeft);
+            SPIB_RxWaveDrainAndExit(u16Frames);
+        }
         return;
     }
 
@@ -1010,7 +1240,6 @@ void pollReceiveFromSpi(void)
         if (!s_bSpiClean)
         {
             spiB_slave.u32ResetCount++;
-            spiB_slave.u16LastRcntBeforeReset = spiB_slave.u16Rcnt;
 
             SPI_disableModule(SPIB_SYSTEM_BASE);
             SPI_enableModule(SPIB_SYSTEM_BASE);
@@ -1071,16 +1300,17 @@ void runSPIBslave(void)
     case _POP_RXD_FROM_SPI:
         pollReceiveFromSpi();
 
-        while(0 < spiB_slave.u16Rcnt) {
-            if(spiB_slave.u16Rpop != spiB_slave.u16Rpush) {
-                s_sSpiParser.pRdata = &spiB_slave.u32RxD[spiB_slave.u16Rpop];
+        {
+            SPI_FRAME_t frame;
+            U32_PACK adapter;
+            while (SPI_FIFO_Pop(&s_fallbackFifo, &frame))
+            {
+                adapter.u16Address = frame.cmd;
+                adapter.u16Data    = frame.data;
+                s_sSpiParser.pRdata = &adapter;
                 s_sSpiParser.wrfunc = wr32bitsToSpi;
                 parseRemoteCommand(&s_sSpiParser);
             }
-
-            spiB_slave.u16Rpop++;
-            if(SIZE_OF_SSS_BUFFER == spiB_slave.u16Rpop) spiB_slave.u16Rpop = 0;
-            spiB_slave.u16Rcnt--;
         }
         s_sSpiParser.wrfunc = wr32bitsToSpi;
 

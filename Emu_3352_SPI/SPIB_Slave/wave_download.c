@@ -1,7 +1,9 @@
 #include "driverlib.h"
 #include "device.h"
 #include "wave_download.h"
-#include "spi_slave.h"
+/* spi_slave.h is intentionally NOT included here; OUTPUT_ON is passed by
+ * callers via the u16OutputOn parameter to avoid coupling this service to
+ * the driver layer. */
 
 #pragma DATA_SECTION(g_waveDownload, "spib_slave_state")
 ST_WAVE_DOWNLOAD g_waveDownload;
@@ -45,7 +47,12 @@ void WaveDownload_SetPage(uint16_t u16Page)
     if (u16Page < WAVE_MAX_PAGES)
     {
         g_waveDownload.u16SelectedPage = u16Page;
-        if (g_waveDownload.u16PageState[u16Page] == (uint16_t)WAVE_PAGE_STATE_EMPTY)
+        /* Re-selecting any non-LOCKED page restarts its download:
+         * stale metadata from a previous partial/invalid download
+         * (e.g. Test6/Test8 leftovers) must not leak into the new
+         * download, or the final validation fails on sample count
+         * and address continuity. LOCKED (active) pages are kept. */
+        if (g_waveDownload.u16PageState[u16Page] != (uint16_t)WAVE_PAGE_STATE_LOCKED)
         {
             g_waveDownload.u16PageState[u16Page] = (uint16_t)WAVE_PAGE_STATE_DOWNLOADING;
             g_waveDownload.u16SampleCount[u16Page] = 0U;
@@ -158,14 +165,14 @@ uint16_t WaveDownload_CompleteDownload(uint16_t u16Data)
     return 1U;
 }
 
-uint16_t WaveDownload_ValidatePage(void)
+uint16_t WaveDownload_ValidatePage(uint16_t u16OutputOn)
 {
     uint16_t u16PageId = g_waveDownload.u16SelectedPage;
     if (u16PageId >= WAVE_MAX_PAGES)
     {
         return 0xFFFFU;
     }
-    
+
     /* WAVE_VALIDATE minimum checks:
        - selected page valid
        - page_id within 0x0000~0x00FF
@@ -173,7 +180,7 @@ uint16_t WaveDownload_ValidatePage(void)
        - address_continuous == true
        - last_address == 0x3FFF
        - download_complete == true
-       - output_off == true (OUTPUT_ON == 0)
+       - output_off == true (u16OutputOn == 0)
     */
     bool bSelectedPageValid = (u16PageId != WAVE_PAGE_INVALID);
     bool bPageRangeOk = (u16PageId < WAVE_MAX_PAGES);
@@ -181,7 +188,7 @@ uint16_t WaveDownload_ValidatePage(void)
     bool bContinuousOk = g_waveDownload.bAddressContinuous[u16PageId];
     bool bLastAddrOk = (g_waveDownload.u16LastAddress[u16PageId] == WAVE_DATA_WINDOW_LIMIT);
     bool bCompleteOk = g_waveDownload.bDownloadComplete[u16PageId];
-    bool bOutputOff = (OUTPUT_ON == 0U);
+    bool bOutputOff = (u16OutputOn == 0U);
     
     g_waveDownload.u16PageState[u16PageId] = (uint16_t)WAVE_PAGE_STATE_VALIDATING;
     
@@ -199,22 +206,22 @@ uint16_t WaveDownload_ValidatePage(void)
     return g_waveDownload.u16PageState[u16PageId];
 }
 
-uint16_t WaveDownload_ActivatePage(void)
+uint16_t WaveDownload_ActivatePage(uint16_t u16OutputOn)
 {
     uint16_t u16PageId = g_waveDownload.u16SelectedPage;
     if (u16PageId >= WAVE_MAX_PAGES)
     {
         return 0xFFFFU;
     }
-    
+
     /* WAVE_ACTIVATE preconditions:
        - selected page valid
        - page state == VALID (WAVE_PAGE_STATE_VALID)
-       - output_off == true
+       - output_off == true (u16OutputOn == 0)
     */
     bool bSelectedPageValid = (u16PageId != WAVE_PAGE_INVALID);
     bool bStateValid = (g_waveDownload.u16PageState[u16PageId] == (uint16_t)WAVE_PAGE_STATE_VALID);
-    bool bOutputOff = (OUTPUT_ON == 0U);
+    bool bOutputOff = (u16OutputOn == 0U);
     
     if (bSelectedPageValid && bStateValid && bOutputOff)
     {
@@ -236,7 +243,8 @@ uint16_t WaveDownload_GetPageState(uint16_t u16Page)
     return (uint16_t)WAVE_PAGE_STATE_INVALID;
 }
 
-bool WaveDownload_HandleWrite(uint16_t u16Address, uint16_t u16Data, uint16_t *pu16Response)
+bool WaveDownload_HandleWrite(uint16_t u16Address, uint16_t u16Data,
+                              uint16_t *pu16Response, uint16_t u16OutputOn)
 {
     if (u16Address == WAVE_PAGE_SELECT_ADDR)
     {
@@ -244,32 +252,32 @@ bool WaveDownload_HandleWrite(uint16_t u16Address, uint16_t u16Data, uint16_t *p
         *pu16Response = g_waveDownload.u16SelectedPage;
         return true;
     }
-    
+
     if (u16Address == WAVE_DOWNLOAD_CTRL_ADDR)
     {
         *pu16Response = WaveDownload_CompleteDownload(u16Data);
         return true;
     }
-    
+
     if (u16Address == WAVE_VALIDATE_ADDR)
     {
-        *pu16Response = WaveDownload_ValidatePage();
+        *pu16Response = WaveDownload_ValidatePage(u16OutputOn);
         return true;
     }
-    
+
     if (u16Address == WAVE_ACTIVATE_ADDR)
     {
-        *pu16Response = WaveDownload_ActivatePage();
+        *pu16Response = WaveDownload_ActivatePage(u16OutputOn);
         return true;
     }
-    
+
     if (u16Address == WAVE_PAGE_STATUS_ADDR)
     {
         *pu16Response = (uint16_t)WaveDownload_GetPageState(g_waveDownload.u16SelectedPage);
         return true;
     }
-    
-    if (u16Address >= WAVE_DATA_WINDOW_BASE && u16Address <= WAVE_DATA_WINDOW_LIMIT)
+
+    if ((u16Address >= WAVE_DATA_WINDOW_BASE) && (u16Address <= WAVE_DATA_WINDOW_LIMIT))
     {
         if (g_waveDownload.u16SelectedPage != WAVE_PAGE_INVALID)
         {
@@ -278,6 +286,6 @@ bool WaveDownload_HandleWrite(uint16_t u16Address, uint16_t u16Data, uint16_t *p
             return true;
         }
     }
-    
+
     return false;
 }

@@ -347,6 +347,10 @@ docs/
 
 # Development Milestones
 
+This section is the original ASR5K-Lite learning roadmap. It is retained as
+context and does not report current project milestone status. Current status is
+defined by `.agent/00_Project/ASR5K_STATUS.md`.
+
 ## M1
 
 SCI Bring-up
@@ -445,14 +449,20 @@ Optimize later.
 
 ---
 
-# Document Authority Hierarchy
+# Governance Core
 
-When analyzing this workspace and its metadata inside `.agent/`, refer to [ARCHITECTURE_AUTHORITY.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/00_Project/ARCHITECTURE_AUTHORITY.md) for document roles.
+This file provides behavioral and project context only. It does not define
+document authority and cannot override approved architecture or governance.
 
-* **Tier 1 (Rules)**: `rules/ASR5K_Context.md`, `rules/rules.md`. Highest authority.
-* **Tier 2 (Specifications)**: Active specs like `SPEC_FIRMWARE_ARCH.md`, `03_Knowledge/Peripheral/DMA/CPU1_ARCH_DESIGN.MD`. Contains authoritative design contracts.
-* **Tier 3 (Milestones/Prototypes)**: Milestone closed reports (e.g. `02_Milestones/M2_FIFO.md`). **These represent historical checkpoint logs or experimental utilities and are NOT active system specifications.**
-* **Tier 4 (Research/References)**: Exploratory research notes and static PDFs.
+Before using this context, read and follow:
 
-AI agents MUST NOT mix up Tier 3/4 documents with Tier 1/2 specifications.
+1. `.agent/AGENT_ENTRYPOINT.md`
+2. `.agent/00_Project/ARCHITECTURE_AUTHORITY.md`
+3. `.agent/00_Project/ASR5K_DECISIONS.md`
+4. `.agent/DOCUMENT_STATUS_REGISTRY.md`
+5. `.agent/ARCHITECTURE_CONFLICT_REGISTER.md`
+
+If any statement in this file conflicts with the governance core, the
+governance core controls. Milestone, research, knowledge, and workflow
+documents must be used only according to their registered status.
 

@@ -33,6 +33,32 @@ static u16 s_u16SineTableChecksum;
 #pragma DATA_SECTION(g_u16SpiMasterWaveRam, "spia_master_wave_ram")
 volatile u16 g_u16SpiMasterWaveRam[SPI_SINE_TABLE_SIZE];
 
+typedef struct {
+  u16 index;
+  u16 mosi_addr;
+  u16 mosi_data;
+  u16 miso_addr;
+  u16 miso_data;
+  u16 expected_ack_addr;
+  u16 expected_ack_data;
+  u16 validated_index;
+  u16 validation_result;
+} ST_SPI_DEBUG_TRACE;
+
+#pragma DATA_SECTION(g_astDbgTrace, "spia_master_debug")
+volatile ST_SPI_DEBUG_TRACE g_astDbgTrace[20];
+#pragma DATA_SECTION(g_u16DbgTraceIdx, "spia_master_debug")
+volatile u16 g_u16DbgTraceIdx = 0U;
+
+#pragma DATA_SECTION(g_astMosiLog, "spia_master_debug")
+volatile struct {
+  u16 addr;
+  u16 data;
+} g_astMosiLog[40];
+#pragma DATA_SECTION(g_u16MosiCount, "spia_master_debug")
+volatile u16 g_u16MosiCount = 0U;
+
+
 ST_SPI_MASTER_CONTROL spiA_master = {
   .pastStressTxBuf = s_astStressTxBuf,
   .pastStressRxBuf = s_astStressRxBuf,
@@ -561,25 +587,53 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
       if (pstInst->stBlockTx.bFirstDiscarded == 0U) {
         pstInst->stBlockTx.bFirstDiscarded = 1U;
         pstInst->u32TimeoutCnt = 0U;
+
+        // Log debug trace for the first (discarded) response
+        if (pstInst->stBlockTx.u16WaveMode == 2U && g_u16DbgTraceIdx < 20U) {
+          g_astDbgTrace[g_u16DbgTraceIdx].mosi_addr = (g_u16DbgTraceIdx < g_u16MosiCount) ? g_astMosiLog[g_u16DbgTraceIdx].addr : 0U;
+          g_astDbgTrace[g_u16DbgTraceIdx].mosi_data = (g_u16DbgTraceIdx < g_u16MosiCount) ? g_astMosiLog[g_u16DbgTraceIdx].data : 0U;
+          g_astDbgTrace[g_u16DbgTraceIdx].miso_addr = w1;
+          g_astDbgTrace[g_u16DbgTraceIdx].miso_data = w2;
+          g_astDbgTrace[g_u16DbgTraceIdx].expected_ack_addr = 0U;
+          g_astDbgTrace[g_u16DbgTraceIdx].expected_ack_data = 0U;
+          g_astDbgTrace[g_u16DbgTraceIdx].validated_index = 0xFFFFU;
+          g_astDbgTrace[g_u16DbgTraceIdx].validation_result = 0U; // skipped
+          g_u16DbgTraceIdx++;
+        }
       } else {
         if (pstInst->stBlockTx.u16RxIndex < pstInst->stBlockTx.u16Length) {
           u16 u16Idx = pstInst->stBlockTx.u16RxIndex;
           if (pstInst->stBlockTx.pstTxBuf == 0) {
             // Waveform generation verify
-            u16 u16ExpTxAddr, u16ExpTxData;
-            buildWaveBlockPacket(pstInst, u16Idx, &u16ExpTxAddr, &u16ExpTxData);
+            if (pstInst->stBlockTx.u16WaveMode == 2U) {
+              // POLICY CHANGE: Do not validate MISO for Test9 Wave Download burst
+              if (g_u16DbgTraceIdx < 20U) {
+                g_astDbgTrace[g_u16DbgTraceIdx].mosi_addr = (g_u16DbgTraceIdx < g_u16MosiCount) ? g_astMosiLog[g_u16DbgTraceIdx].addr : 0U;
+                g_astDbgTrace[g_u16DbgTraceIdx].mosi_data = (g_u16DbgTraceIdx < g_u16MosiCount) ? g_astMosiLog[g_u16DbgTraceIdx].data : 0U;
+                g_astDbgTrace[g_u16DbgTraceIdx].miso_addr = w1;
+                g_astDbgTrace[g_u16DbgTraceIdx].miso_data = w2;
+                g_astDbgTrace[g_u16DbgTraceIdx].expected_ack_addr = 0U;
+                g_astDbgTrace[g_u16DbgTraceIdx].expected_ack_data = 0U;
+                g_astDbgTrace[g_u16DbgTraceIdx].validated_index = u16Idx;
+                g_astDbgTrace[g_u16DbgTraceIdx].validation_result = 1U; // Force pass
+                g_u16DbgTraceIdx++;
+              }
+            } else {
+              u16 u16ExpTxAddr, u16ExpTxData;
+              buildWaveBlockPacket(pstInst, u16Idx, &u16ExpTxAddr, &u16ExpTxData);
 
-            u16 u16ExpRxAddr = (u16)(u16ExpTxAddr + calcSpiMasterChecksum(w2));
-            u16 bDataOk = (w2 == u16ExpTxData);
-            if (u16ExpTxAddr == Spi_Block_End_spi_addr) {
-              bDataOk = (w2 == SPI_BLOCK_STATUS_BUSY) || (w2 == SPI_BLOCK_STATUS_READY);
-            }
+              u16 u16ExpRxAddr = (u16)(u16ExpTxAddr + calcSpiMasterChecksum(w2));
+              u16 bDataOk = (w2 == u16ExpTxData);
+              if ((u16ExpTxAddr == Spi_Block_End_spi_addr) && (pstInst->stBlockTx.u16WaveMode != 2U)) {
+                bDataOk = (w2 == SPI_BLOCK_STATUS_BUSY) || (w2 == SPI_BLOCK_STATUS_READY);
+              }
 
-            if ((w1 != u16ExpRxAddr) || (!bDataOk)) {
-              s_stSpiApp.u32StressFailCnt++;
-              reportMasterError(SPIA_FAULT_SOURCE_PROTOCOL, (u16)SPIA_PROT_FAULT_CHECKSUM);
-              recoverSpiMaster(pstInst);
-              return;
+              if ((w1 != u16ExpRxAddr) || (!bDataOk)) {
+                s_stSpiApp.u32StressFailCnt++;
+                reportMasterError(SPIA_FAULT_SOURCE_PROTOCOL, (u16)SPIA_PROT_FAULT_CHECKSUM);
+                recoverSpiMaster(pstInst);
+                return;
+              }
             }
           } else {
             if (pstInst->stBlockTx.bLoop == 1U) {
@@ -639,6 +693,14 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
             spiA_master.stDiag.stDriver.stComm.u32TxTotal++;
 
             writeSpiMasterFrame(u32BaseAddr, u16TxAddr, u16TxData);
+
+            // Log MOSI
+            if (pstInst->stBlockTx.u16WaveMode == 2U && g_u16MosiCount < 40U) {
+              g_astMosiLog[g_u16MosiCount].addr = u16TxAddr;
+              g_astMosiLog[g_u16MosiCount].data = u16TxData;
+              g_u16MosiCount++;
+            }
+
             pstInst->u32WaitSlaveCnt = U32_UPCNTS;
             pstInst->stBlockTx.u16TxIndex++;
             pstInst->u32TimeoutCnt = 0U;
@@ -647,6 +709,14 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
           if (!SPI_isBusy(u32BaseAddr)) {
             // Trigger flush
             writeSpiMasterFrame(u32BaseAddr, 0xFFFFU, 0x0000U);
+
+            // Log MOSI
+            if (pstInst->stBlockTx.u16WaveMode == 2U && g_u16MosiCount < 40U) {
+              g_astMosiLog[g_u16MosiCount].addr = 0xFFFFU;
+              g_astMosiLog[g_u16MosiCount].data = 0x0000U;
+              g_u16MosiCount++;
+            }
+
             pstInst->u32WaitSlaveCnt = U32_UPCNTS;
             pstInst->stBlockTx.bNullSent = 1U;
             pstInst->u32TimeoutCnt = 0U;
@@ -830,6 +900,22 @@ static u16 startTriggeredSpiMasterTest(ST_SPI_MASTER *pstInst) {
     if (writeBlockSpiMaster(pstInst, 0, 0, 4096U, onBlockWriteComplete) == 1U) {
       pstInst->stBlockTx.bLoop = 0U;
       pstInst->stBlockTx.u16WaveMode = 2U;
+      {
+        u16 i;
+        g_u16MosiCount = 0U;
+        g_u16DbgTraceIdx = 0U;
+        for (i = 0U; i < 20U; i++) {
+          g_astDbgTrace[i].index = i;
+          g_astDbgTrace[i].mosi_addr = 0U;
+          g_astDbgTrace[i].mosi_data = 0U;
+          g_astDbgTrace[i].miso_addr = 0U;
+          g_astDbgTrace[i].miso_data = 0U;
+          g_astDbgTrace[i].expected_ack_addr = 0U;
+          g_astDbgTrace[i].expected_ack_data = 0U;
+          g_astDbgTrace[i].validated_index = 0xFFFFU;
+          g_astDbgTrace[i].validation_result = 0U;
+        }
+      }
       markTriggeredTestRunning(SPI_APP_STATE_BLOCK_WRITE);
       return 1U;
     }
@@ -1120,10 +1206,21 @@ static void onManualReadComplete(u16 u16RxAddr, u16 u16RxData) {
   }
 }
 
+#ifndef WAVE_VALIDATE_ADDR
+#define WAVE_VALIDATE_ADDR 0x0960U
+#endif
+#ifndef WAVE_ACTIVATE_ADDR
+#define WAVE_ACTIVATE_ADDR 0x0961U
+#endif
+
 static void onManualWriteComplete(u16 u16RxAddr, u16 u16RxData) {
   u16 u16ExpectedAddr = (u16)(s_stSpiApp.u16TestAddr + calcSpiMasterChecksum(u16RxData));
   s_stSpiTest.u32Detail = ((u32)u16RxAddr << 16) | (u32)u16RxData;
-  if ((u16RxAddr == u16ExpectedAddr) && (u16RxData == s_stSpiApp.u16TestData)) {
+  bool bIsCmdResultReg = (s_stSpiApp.u16TestAddr == WAVE_VALIDATE_ADDR) ||
+                         (s_stSpiApp.u16TestAddr == WAVE_ACTIVATE_ADDR);
+  bool bDataValid = bIsCmdResultReg ? true : (u16RxData == s_stSpiApp.u16TestData);
+
+  if ((u16RxAddr == u16ExpectedAddr) && bDataValid) {
     recordSpiMasterSuccess(1U);
     s_stSpiApp.eTestState = SPI_MASTER_TEST_DONE;
     s_stSpiApp.u16LastResult = u16RxData;

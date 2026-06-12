@@ -4,11 +4,23 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define WAVE_PAGE_SELECT_ADDR       0x0958U
-#define WAVE_DOWNLOAD_CTRL_ADDR     0x0959U
-#define WAVE_PAGE_STATUS_ADDR       0x095AU
-#define WAVE_VALIDATE_ADDR          0x0960U
-#define WAVE_ACTIVATE_ADDR          0x0961U
+/* Register addresses are owned by cmd_id.h; these fallbacks apply only when
+ * cmd_id.h is not included first (e.g. standalone host-side unit tests). */
+#ifndef WAVE_PAGE_SELECT_ADDR
+#define WAVE_PAGE_SELECT_ADDR       0x0958
+#endif
+#ifndef WAVE_DOWNLOAD_CTRL_ADDR
+#define WAVE_DOWNLOAD_CTRL_ADDR     0x0959
+#endif
+#ifndef WAVE_PAGE_STATUS_ADDR
+#define WAVE_PAGE_STATUS_ADDR       0x095A
+#endif
+#ifndef WAVE_VALIDATE_ADDR
+#define WAVE_VALIDATE_ADDR          0x0960
+#endif
+#ifndef WAVE_ACTIVATE_ADDR
+#define WAVE_ACTIVATE_ADDR          0x0961
+#endif
 
 #define WAVE_DATA_WINDOW_BASE       0x3000U
 #define WAVE_DATA_WINDOW_LIMIT      0x3FFFU
@@ -82,13 +94,17 @@ uint16_t WaveDownload_CompleteDownload(uint16_t u16Data);
 
 /**
  * @brief Validate selected page.
+ * @param u16OutputOn  Current OUTPUT_ON state (0 = output off).
+ *                     Caller injects this value so wave_download has no
+ *                     direct dependency on spi_slave globals.
  */
-uint16_t WaveDownload_ValidatePage(void);
+uint16_t WaveDownload_ValidatePage(uint16_t u16OutputOn);
 
 /**
  * @brief Activate selected page for DDS.
+ * @param u16OutputOn  Current OUTPUT_ON state (0 = output off).
  */
-uint16_t WaveDownload_ActivatePage(void);
+uint16_t WaveDownload_ActivatePage(uint16_t u16OutputOn);
 
 /**
  * @brief Get state of specified page.
@@ -97,7 +113,9 @@ uint16_t WaveDownload_GetPageState(uint16_t u16Page);
 
 /**
  * @brief Route write commands to Wave Download Service if applicable.
+ * @param u16OutputOn  Current OUTPUT_ON state forwarded to validate/activate.
  */
-bool WaveDownload_HandleWrite(uint16_t u16Address, uint16_t u16Data, uint16_t *pu16Response);
+bool WaveDownload_HandleWrite(uint16_t u16Address, uint16_t u16Data,
+                              uint16_t *pu16Response, uint16_t u16OutputOn);
 
 #endif /* WAVE_DOWNLOAD_H_ */

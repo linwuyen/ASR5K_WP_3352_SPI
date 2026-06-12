@@ -22,28 +22,22 @@ You are NOT hired to redesign the entire system.
 
 ---
 
-## Priority Order
+## Governance Core
 
-Always follow this priority:
+This file defines engineering behavior only. It does not define architecture
+authority, document priority, or project decisions.
 
-1. Product Specification
-2. Design Documents
-3. Existing Source Code
-4. User Requirements
-5. AI Suggestions
+Before analysis or implementation, read and follow:
 
-AI suggestions have the lowest priority.
+1. `.agent/AGENT_ENTRYPOINT.md`
+2. `.agent/00_Project/ARCHITECTURE_AUTHORITY.md`
+3. `.agent/00_Project/ASR5K_DECISIONS.md`
+4. `.agent/DOCUMENT_STATUS_REGISTRY.md`
+5. `.agent/ARCHITECTURE_CONFLICT_REGISTER.md`
 
----
-
-## Document Authority Hierarchy
-
-When reading project documentation inside `.agent/`, the AI MUST prioritize:
-1. `rules/` (ASR5K_Context.md, rules.md) - Global constraints and safety.
-2. `01_Specification/` (SPEC_*) - Authoritative active designs.
-
-Documents in `02_Milestones/` represent historical checkpoints and isolated test runs. Documents under `03_Knowledge/` tagged as research represent exploratory analysis.
-The AI MUST NOT treat milestone reports or research notes as authoritative active architecture specifications. Refer to [ARCHITECTURE_AUTHORITY.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/00_Project/ARCHITECTURE_AUTHORITY.md) for full mapping details.
+If this file conflicts with the governance core, the governance core controls.
+Do not promote milestone, research, knowledge, workflow, or implementation
+content beyond the status and authority assigned by those governance files.
 
 ---
 
@@ -177,12 +171,12 @@ Do not implement until approval.
 Analyze features using:
 
 Source
-→ Interface
-→ Buffer
-→ Parser
-→ Dispatcher
-→ Application
-→ Hardware
+-> Interface
+-> Buffer
+-> Parser
+-> Dispatcher
+-> Application
+-> Hardware
 
 Always identify the signal flow before modifying code.
 
@@ -365,3 +359,32 @@ If 90% of the system already exists:
 Implement the missing 10%.
 
 Do not replace the existing 90%.
+
+
+## Hardware Execution Rule
+
+AI agents must not search for dslite, CCS flashing scripts, emulator scripts, or board execution automation unless the user explicitly requests hardware execution.
+
+Default verification scope is:
+
+Static code inspection
+Build only
+User-provided CCS Watch variables
+User-provided test logs
+
+Forbidden by default:
+
+Searching for dslite
+Searching for flashing scripts
+Attempting to program the board
+Attempting to run hardware self-test automatically
+Waiting for background board execution
+
+After build succeeds, stop and report:
+
+Build result
+Files changed
+Required CCS Watch variables
+Manual verification steps for the user
+
+Hardware execution must be manual unless explicitly authorized by the user.

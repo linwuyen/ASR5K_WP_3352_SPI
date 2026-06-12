@@ -1,53 +1,51 @@
-# Agent Document Index
+# ASR5K Agent Document Index
 
-This document indexes all documentation files inside the `.agent` directory, classifying them by authority level and purpose.
+## Read First
 
-> [!WARNING]
-> Milestone reports and research notes must not override ARCHITECTURE_AUTHORITY.md or official SPEC documents.
+Read these governance documents in this order before using any architecture,
+milestone, handoff, research, or implementation material:
 
----
+1. [`.agent/AGENT_ENTRYPOINT.md`](../AGENT_ENTRYPOINT.md)
+2. [`.agent/00_Project/ARCHITECTURE_AUTHORITY.md`](ARCHITECTURE_AUTHORITY.md)
+3. [`.agent/00_Project/ASR5K_DECISIONS.md`](ASR5K_DECISIONS.md)
+4. [`.agent/DOCUMENT_STATUS_REGISTRY.md`](../DOCUMENT_STATUS_REGISTRY.md)
+5. [`.agent/ARCHITECTURE_CONFLICT_REGISTER.md`](../ARCHITECTURE_CONFLICT_REGISTER.md)
 
-## 1. Must Read First
-These documents define the global rules, state variables, constraints, authority hierarchy, and current engineering status.
+## Current Project State
 
-* **[ARCHITECTURE_AUTHORITY.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/00_Project/ARCHITECTURE_AUTHORITY.md)**: Establishes the authoritative status of all documents in the project.
-* **[ASR5K_HANDOFF.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/00_Project/ASR5K_HANDOFF.md)**: Handoff summary for developers and AI agents.
-* **[ASR5K_STATUS.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/00_Project/ASR5K_STATUS.md)**: Current milestone checklist and progress tracking log.
-* **[ASR5K_DECISIONS.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/00_Project/ASR5K_DECISIONS.md)**: Architectural and peripheral frozen decisions.
-* **[ASR5K_Context.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/rules/ASR5K_Context.md)**: MCU responsibilities and data flow context.
-* **[rules.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/rules/rules.md)**: Core rules and priority hierarchy for AI agents.
-* **[Review_Checklist.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/rules/Review_Checklist.md)**: Review checklist for firmware changes.
+- [`.agent/00_Project/ASR5K_HANDOFF.md`](ASR5K_HANDOFF.md) summarizes the
+  current engineering handoff and M5A technical direction.
+- [`.agent/00_Project/ASR5K_STATUS.md`](ASR5K_STATUS.md) records governance and
+  milestone status.
 
----
+## Controlled Architecture
 
-## 2. Official Runtime Prototype Specs
-Active design contracts, interfaces, and architecture specifications for runtime modules.
+Architecture documents must be read in the authority order defined by
+`ARCHITECTURE_AUTHORITY.md`: Formal Product Documents, D01, D02, D03, D04, D05,
+D07, and D10. D11 is a research/candidate document and cannot select the
+production protocol.
 
-* **[M2R_RXFRAME_PINGPONG.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M2R_RXFRAME_PINGPONG.md)**: Specification and verification plan for the official runtime Ping/Pong path.
-* **[RxFramePingPong_Contract.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M2R_RXFRAME_PINGPONG/RxFramePingPong_Contract.md)**: Interface definition, states, and transition rules.
-* **[M3_CPU1_DMA_RXFRAME_INTEGRATION.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M3_CPU1_DMA_RXFRAME_INTEGRATION.md)**: Architecture contract and verification report for connecting DMA CH3 to Ping/Pong manager (PASS / CLOSED).
-* **[SPEC_FIRMWARE_ARCH.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/01_Architecture/SPEC_FIRMWARE_ARCH.md)**: Core firmware architecture design spec.
+Use [`.agent/DOCUMENT_STATUS_REGISTRY.md`](../DOCUMENT_STATUS_REGISTRY.md) to
+determine whether each document is `ACTIVE`, `SUPERSEDED`, `HISTORICAL`, or
+`REFERENCE_ONLY`. A filename or this index is not a substitute for reading the
+actual controlling document.
 
----
+## Milestone Evidence
 
-## 3. Milestone Reports
-Historical checkpoint logs, completed test summaries, and experimental utility documentation.
+Documents under [`.agent/02_Milestones/`](../02_Milestones/) are milestone
+evidence. M1 through M4 are closed. M5A Wave Download/Test9 is the current work.
+Milestone documents cannot create or override architecture decisions.
 
-* **[M1_SPI_BASELINE.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M1_SPI_BASELINE.md)**: Baseline SPI Master-Slave communication report (PASS / CLOSED).
-* **[M2_FIFO.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M2_FIFO.md)**: Design log and status of the experimental FIFO utility.
-* **[M4_LEGACY_COMMAND_VALIDATION.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M4_LEGACY_COMMAND_VALIDATION.md)**: Parser-to-handler validation report (PASS / CLOSED).
-* **[M1_M4_VERIFIED_PATH.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M1_M4_VERIFIED_PATH.md)**: Specification of the end-to-end verified communication path.
-* **[M5_WAVE_DOWNLOAD_PLAN.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M5_WAVE_DOWNLOAD_PLAN.md)**: Design plan and interface specification for Wave Download Path (PREPARATION).
-* **Completed Test Reports / Checkpoints**: Historical logs and execution results.
+## Rules and Workflows
 
----
+- [`.agent/rules/`](../rules/) contains agent behavior and review constraints.
+- [`.agent/workflows/`](../workflows/) contains operational procedures.
 
-## 4. Research / Reference Only
-Exploratory design notes, datasheet guidelines, timing analysis, and hardware reference material.
+Rules and workflows are not architecture authorities. Where their content
+conflicts with the governance core, the governance core controls.
 
-* **[cpu1_research_plan.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/01_Architecture/cpu1_research_plan.md)**: CPU1 architecture research plan.
-* **[cpu2_research_plan.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/01_Architecture/cpu2_research_plan.md)**: CPU2 architecture research plan.
-* **[pwm_adc_dac_timing_analysis.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/03_Knowledge/pwm_adc_dac_timing_analysis.md)**: Timing analysis reference.
-* **[hrpwm_hw_config_porting_guide.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/03_Knowledge/hrpwm_hw_config_porting_guide.md)**: HRPWM configuration guide.
-* **TRM PDFs and Hardware Manuals** (e.g. under `.agent/03_Knowledge/Peripheral/`)
-* **IPC/SPI Reference Documents** (e.g. under `.agent/03_Knowledge/SPI_Docs/`)
+## Research and Reference Material
+
+Research, knowledge, hardware manuals, and candidate designs under
+`.agent/01_Architecture/Research/` and `.agent/03_Knowledge/` are reference
+material only unless explicitly promoted by an approved architecture decision.

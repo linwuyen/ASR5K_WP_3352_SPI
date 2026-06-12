@@ -3,19 +3,20 @@
  *
  * Extensible SPI Master/Slave automated test framework (table-driven).
  *
- * Test overview (Phase 2 — wave download pipeline):
+ * Test overview (Phase 2 - wave download pipeline):
  *   Test1  Register write                 (legacy, unchanged)
  *   Test2  Register read                  (legacy, unchanged)
  *   Test3  Output relay set/clear         (legacy, unchanged)
  *   Test4  SEQ block write x16            (legacy, unchanged)
- *   Test5  Wave page select               0x0958 + page_id → selected-page metadata
- *   Test6  Wave sample write (partial)    0x3000~0x3FFF window → page/index 正確性
- *   Test7  Download complete transition   DOWNLOADING → DOWNLOAD_COMPLETE
- *   Test8  Validate pre-check (negative)  sample count / continuity / checksum 把關,
- *                                         不完整 page 必須被拒絕,Output 必須 OFF
- *   Test9  Full 4096 download→complete→validate→activate
- *                                         長傳輸穩定性、DMA 無遺失、parser 計數、
- *                                         page state 終態 LOCKED
+ *   Test5  Wave page select               0x0958 + page_id -> selected-page metadata
+ *   Test6  Wave sample write (partial)    0x3000~0x3FFF window -> page/index correctness
+ *   Test7  Download complete transition   DOWNLOADING -> DOWNLOAD_COMPLETE
+ *   Test8  Validate pre-check (negative)  sample count / continuity / checksum
+ *                                         gatekeeping; incomplete page must be
+ *                                         rejected and Output must be OFF
+ *   Test9  Full 4096 download -> complete -> validate -> activate
+ *                                         long-transfer stability, zero DMA loss,
+ *                                         parser counters, final page state LOCKED
  */
 
 #ifndef ASR5K_SPI_SELFTEST_H_
@@ -54,7 +55,8 @@ typedef enum {
 
 /*
  * Fail-step encoding.
- * 既有值保持不動 (host 端解碼工具相容),新增項一律附加在尾端。
+ * Existing values stay fixed (host-side decoder compatibility); new items
+ * are always appended at the end.
  */
 typedef enum {
     ASR5K_SPI_FAIL_STEP_NONE = 0,

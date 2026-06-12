@@ -2,24 +2,29 @@
  * asr5k_spi_selftest_port.h
  *
  * Portability seam for the SPI self-test framework.
+ * ASCII-ONLY for MS950 compilation safety.
  *
- * 設計目標 (Design goals):
- *   1. 自測引擎 (asr5k_spi_selftest.c) 不直接觸碰 spiA_master / spiB_slave /
- *      g_waveDownload。所有外部相依集中在本檔。
- *   2. 之後 Master / Slave 拆成獨立韌體 (或獨立 CPU) 時:
- *        - MASTER-SIDE API   : 保持本機呼叫。
- *        - SLAVE-SIDE OBSERVE: 改為透過 SPI 讀取遠端診斷暫存器,
- *          只需改寫本檔 (或對應的 port .c),引擎與測試表零修改。
- *   3. 所有協議常數 (位址、page state 編碼) 單一出處,可由建置系統
- *      以 -D 覆寫,避免 magic number 散落。
+ * Design goals:
+ *   1. The self-test engine (asr5k_spi_selftest.c) never touches
+ *      spiA_master / spiB_slave / g_waveDownload directly.  All external
+ *      dependencies are concentrated in this file.
+ *   2. When Master / Slave are later split into separate firmware images
+ *      (or separate CPUs):
+ *        - MASTER-SIDE API   : stays a local call.
+ *        - SLAVE-SIDE OBSERVE: becomes a remote diagnostic-register read
+ *          over SPI.  Only this file (or its port .c) changes; the engine
+ *          and the test table need zero modification.
+ *   3. Single source for all protocol constants (addresses, page-state
+ *      encoding); the build system may override them with -D so magic
+ *      numbers do not spread.
  */
 
 #ifndef ASR5K_SPI_SELFTEST_PORT_H_
 #define ASR5K_SPI_SELFTEST_PORT_H_
 
 #include <stdint.h>
-#include "board.h"        /* device typedefs (float32_t 等) 必須先於  */
-#include "driverlib.h"    /* 模組標頭,否則 shareram.h 會缺型別定義 */
+#include "board.h"        /* device typedefs (float32_t etc.) must come   */
+#include "driverlib.h"    /* before module headers or shareram.h breaks   */
 #include "SPIA_Master/SPI_master.h"
 #include "SPIB_Slave/spi_slave.h"
 #include "SPIB_Slave/wave_download.h"   /* WAVE_*_ADDR register map +
@@ -27,42 +32,31 @@
 
 /* ========================================================================
  * Wave-download register map
- * 位址巨集 (WAVE_PAGE_SELECT_ADDR / WAVE_DOWNLOAD_CTRL_ADDR /
- * WAVE_PAGE_STATUS_ADDR / WAVE_VALIDATE_ADDR / WAVE_ACTIVATE_ADDR)
- * 一律取自專案標頭 wave_download.h / cmd_id.h,本檔不提供 fallback,
- * 避免與協議定義不同步。
+ * Address macros (WAVE_PAGE_SELECT_ADDR / WAVE_DOWNLOAD_CTRL_ADDR /
+ * WAVE_PAGE_STATUS_ADDR / WAVE_VALIDATE_ADDR / WAVE_ACTIVATE_ADDR) always
+ * come from project headers wave_download.h / cmd_id.h.  This file adds
+ * no fallback, to stay in sync with the protocol definition.
  * ======================================================================== */
 
 #define WAVE_WINDOW_BASE_ADDR      0x3000U  /* Test6: sample write window    */
 #define WAVE_WINDOW_LAST_ADDR      0x3FFFU
 #define WAVE_PAGE_SAMPLE_COUNT     4096U
 
-/* ------------------------------------------------------------------------
- * Wave page state encoding.
- * 若 slave 端 enum 變更,於建置選項以 -D 覆寫,不要改引擎。
- * ------------------------------------------------------------------------ */
-#ifndef WAVE_PAGE_STATE_IDLE
-#define WAVE_PAGE_STATE_IDLE               0U
-#endif
-#ifndef WAVE_PAGE_STATE_DOWNLOADING
-#define WAVE_PAGE_STATE_DOWNLOADING        2U
-#endif
-#ifndef WAVE_PAGE_STATE_DOWNLOAD_COMPLETE
-#define WAVE_PAGE_STATE_DOWNLOAD_COMPLETE  3U
-#endif
-#ifndef WAVE_PAGE_STATE_VALID
-#define WAVE_PAGE_STATE_VALID              4U
-#endif
-#ifndef WAVE_PAGE_STATE_INVALID
-#define WAVE_PAGE_STATE_INVALID            5U
-#endif
-#ifndef WAVE_PAGE_STATE_LOCKED
-#define WAVE_PAGE_STATE_LOCKED             6U
-#endif
+/* Wave page state encoding.
+ * Use the ST_WAVE_PAGE_STATE enum from wave_download.h (included above):
+ *   WAVE_PAGE_STATE_EMPTY = 0, WAVE_PAGE_STATE_DOWNLOADING = 1,
+ *   WAVE_PAGE_STATE_DOWNLOAD_COMPLETE = 2, WAVE_PAGE_STATE_VALIDATING = 3,
+ *   WAVE_PAGE_STATE_VALID = 4, WAVE_PAGE_STATE_INVALID = 5,
+ *   WAVE_PAGE_STATE_LOCKED = 6
+ * No fallback #define is provided here: the old fallback values
+ * (DOWNLOADING=2, DOWNLOAD_COMPLETE=3) disagreed with the enum and the
+ * #ifndef guards silently overrode the enum names, breaking comparisons.
+ * The single source of truth is wave_download.h.
+ */
 
 /* ========================================================================
  * MASTER-SIDE API
- * Master/Slave 拆分後仍為本機呼叫,預期不變。
+ * Remains a local call after the Master/Slave split; expected unchanged.
  * ======================================================================== */
 
 static inline uint16_t SelfTestPort_MasterStart(SPI_MASTER_TEST_CMD_e eCmd,
@@ -99,8 +93,9 @@ static inline uint16_t SelfTestPort_MasterFaultSource(void)
 
 /* ========================================================================
  * SLAVE-SIDE OBSERVATION
- * 拆分後改為遠端診斷讀取 (SPI register read / debug channel)。
- * 引擎只透過這些 accessor 取值,因此替換實作即可移植。
+ * After the split this becomes a remote diagnostic read (SPI register
+ * read / debug channel).  The engine only reads through these accessors,
+ * so swapping the implementation is enough to port it.
  * ======================================================================== */
 
 /* ---- DMA / parser counters -------------------------------------------- */
@@ -136,8 +131,8 @@ static inline uint16_t SelfTestPort_BlockProgress(void)        { return spiB_sla
 static inline uint16_t SelfTestPort_BlockStatus(void)          { return spiB_slave.u16BlockStatus; }
 
 /* ---- Wave download metadata (Test5~9) ----------------------------------
- * 拆分後: 這些 metadata 應由 slave 以唯讀診斷暫存器匯出,
- * 屆時以 SPI read 取代直接結構存取。
+ * After the split the slave should export this metadata via read-only
+ * diagnostic registers; SPI reads then replace direct struct access.
  * ------------------------------------------------------------------------ */
 static inline uint16_t SelfTestPort_WaveSelectedPage(void)
 {
@@ -193,10 +188,11 @@ static inline uint16_t SelfTestPort_FlashPathIdle(void)
 }
 
 /* ---- Debug capture hook (optional) --------------------------------------
- * SPIB_DebugCaptureSelfTest() 目前專案中無實作,預設關閉以免連結失敗。
- * 若 slave 模組提供該函式,在建置選項加
+ * SPIB_DebugCaptureSelfTest() has no implementation in this project, so it
+ * is disabled by default to avoid link failures.  If the slave module
+ * provides it, enable with build option
  *   -DASR5K_SELFTEST_ENABLE_DEBUG_CAPTURE=1
- * 即可啟用,引擎不需修改。
+ * with no engine change required.
  * ------------------------------------------------------------------------ */
 #ifndef ASR5K_SELFTEST_ENABLE_DEBUG_CAPTURE
 #define ASR5K_SELFTEST_ENABLE_DEBUG_CAPTURE 0

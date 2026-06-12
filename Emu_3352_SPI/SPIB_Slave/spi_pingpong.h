@@ -1,59 +1,49 @@
 /*
  * spi_pingpong.h
  *
- * M2R RxFrame Ping/Pong Buffer contract.
+ * DMA Ping/Pong buffer abstraction for SPI-B single-frame DMA transfers.
+ *
+ * Each DMA transfer moves exactly SPIB_PINGPONG_FRAME_WORDS words (one
+ * register frame).  After each transfer the caller swaps buffers so the
+ * next DMA targets the idle buffer while the just-filled buffer is parsed.
+ *
+ * Replaces the six raw globals previously scattered in spi_b_slave.c:
+ *   gSpibRxRegFrame / gSpibRxAltFrame / gSpibRxM3ActiveBuf /
+ *   gSpibRxM3PingFullCount / gSpibRxM3PongFullCount / gSpibRxM3OverrunCount
  */
+
 #ifndef SPI_PINGPONG_H_
 #define SPI_PINGPONG_H_
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "device.h"
-#include "ctypedef.h"
-#include "HwConfig.h"
 
-#define RX_BUFFER_SIZE 64U  /* Size of each buffer in legacy frames */
+#define SPIB_PINGPONG_FRAME_WORDS  2U
 
-/* Legacy frame structure */
 typedef struct {
-    uint16_t cmd;   /* Register address / command ID */
-    uint16_t data;  /* Register data value */
-} RxFrame_t;
+    volatile uint16_t pingBuf[SPIB_PINGPONG_FRAME_WORDS];
+    volatile uint16_t pongBuf[SPIB_PINGPONG_FRAME_WORDS];
+    volatile uint16_t activeDmaBuf;     /* 0 = DMA targets Ping, 1 = Pong */
+    volatile uint32_t pingDoneCount;
+    volatile uint32_t pongDoneCount;
+    volatile uint32_t overrunCount;     /* reserved for future overrun detection */
+} SpibDmaPingPong_t;
 
-/* Buffer States */
-typedef enum {
-    BUFF_STATE_EMPTY = 0,
-    BUFF_STATE_FILLING,
-    BUFF_STATE_FULL,
-    BUFF_STATE_PARSING
-} RxBufferState_e;
+/* Initialize all fields to zero; activeDmaBuf starts at Ping (0). */
+void SpibPingPong_Init(SpibDmaPingPong_t *pp);
 
-/* Ping/Pong Management Structure */
-typedef struct {
-    RxFrame_t pingBuffer[RX_BUFFER_SIZE];
-    RxFrame_t pongBuffer[RX_BUFFER_SIZE];
-    
-    volatile RxBufferState_e pingState;
-    volatile RxBufferState_e pongState;
-    
-    uint16_t activeDmaBuffer;      /* 0 = Ping, 1 = Pong */
-    uint16_t activeParserBuffer;   /* 0 = Ping, 1 = Pong */
-    
-    uint16_t dmaWriteIdx;          /* Index for DMA writes */
-    uint16_t parserReadIdx;        /* Index for parser reads */
-    
-    /* Diagnostics and Counters */
-    uint32_t pingFullCount;
-    uint32_t pongFullCount;
-    uint32_t overrunCount;
-    uint32_t parseSuccessCount;
-    uint32_t parseFailCount;
-} RxFramePingPong_t;
+/* Returns the buffer the DMA engine should write its next transfer into. */
+volatile uint16_t *SpibPingPong_GetDmaDst(SpibDmaPingPong_t *pp);
 
-/* Public API */
-void RxFramePingPong_Init(void);
-bool RxFramePingPong_DmaWrite(const RxFrame_t *frame);
-void RxFramePingPong_Process(void);
-bool RxFramePingPong_Test_Run(void);
+/*
+ * Called after DMA done.
+ * Returns a pointer to the frame that was just completed (for parsing),
+ * and pre-switches activeDmaBuf to the alternate buffer so the next
+ * DMA restart immediately targets the idle buffer.
+ */
+volatile uint16_t *SpibPingPong_SwapAndGetFrame(SpibDmaPingPong_t *pp);
+
+/* Self-contained smoke test; returns true on pass. */
+bool SpibPingPong_Test_Run(void);
 
 #endif /* SPI_PINGPONG_H_ */

@@ -1,40 +1,81 @@
-# ASR5K Architecture Authority Mapping
+# ASR5K Architecture Authority
 
-This document specifies the authoritative hierarchy and priority of all files inside the `.agent/` directory. All developers and AI agents MUST adhere to this classification when reading, writing, or modifying code.
+## Purpose
 
----
+This file defines the only approved authority order for interpreting ASR5K
+architecture. It applies to agents, reviewers, planning documents, workflows,
+milestones, and implementation work.
 
-## 1. Documentation Hierarchy & Authority Levels
+## Authority Hierarchy
 
-To ensure system consistency, documents are divided into four distinct tiers with descending authority:
+| Tier | Authority |
+|---|---|
+| Tier 1 | Formal Product Documents |
+| Tier 2 | D01 |
+| Tier 3 | D02 |
+| Tier 4 | D03 |
+| Tier 5 | D04 |
+| Tier 6 | D05 |
+| Tier 7 | D07 |
+| Tier 8 | D10 |
+| Tier 9 | Approved Decisions |
+| Tier 10 | Approved Conflict Register |
+| Tier 11 | Milestone Evidence |
+| Tier 12 | Research / Candidate Documents |
 
-### Tier 1: System Rules & Constraints (Highest Authority)
-These files define strict behavioral constraints and coding boundaries for AI agents and human developers.
-* **[ASR5K_Context.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/rules/ASR5K_Context.md)**: Hardware/Software configurations, CPU roles, core data flow model.
-* **[rules.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/rules/rules.md)**: Core programming guidelines and minimal change directives.
-* **[Review_Checklist.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/rules/Review_Checklist.md)**: Review criteria.
+The D-series names refer to the controlled documents under
+`.agent/01_Architecture/ASR5K設計文件/`. D02 includes its controlled companion
+documents, such as D02_2_1 and D02_2_3.
 
-### Tier 2: Active System Specifications
-These files describe the current, verified, and officially active architecture of the firmware modules. They represent the current source of truth for design integration.
-* **[SPEC_FIRMWARE_ARCH.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/01_Architecture/SPEC_FIRMWARE_ARCH.md)**: Global system-level mapping, dual-core memory regions, ePWM/ADC scheduler timing, and hardware validation modules.
-* **[CPU1_ARCH_DESIGN.MD](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/03_Knowledge/Peripheral/DMA/CPU1_ARCH_DESIGN.MD)**: Official CPU1 DMA precision multi-stage daisy-chain specification.
-* **[CPU2_ARCH_DESIGN.MD](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/03_Knowledge/Peripheral/DMA/CPU2_ARCH_DESIGN.MD)**: Official CPU2 DMA multi-stage specification.
+## Interpretation Rules
 
-### Tier 3: Experimental Prototypes & Milestone Reports
-These files record point-in-time progress, isolated unit tests, and milestone verification reports. 
-> [!WARNING]
-> **These documents are NOT global system architecture specifications.** They often represent isolated configurations, local selftests, or experimental utility states that are NOT integrated into the production runtime main path.
-* **[M2_FIFO.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/02_Milestones/M2_FIFO.md)**: FIFO Selftest/Utility report. Status: *Experimental Utility / Not Runtime Main Path*.
-* **[PH_2_FIRMWARE_VERIFY.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/03_Knowledge/HardWare_Test/PH_2_FIRMWARE_VERIFY.md)**: Firmware hardware loop tests.
+1. Read higher tiers before lower tiers.
+2. A lower-tier document cannot silently override a higher-tier document.
+3. Approved Decisions and the Approved Conflict Register may explicitly freeze
+   a decision or mark a named statement as superseded. Such an explicit
+   resolution controls that specific conflict; it does not promote the entire
+   lower-tier document above the hierarchy.
+4. When documents at the same tier disagree, do not guess. Use an approved
+   decision or conflict-register entry. If none exists, report the ambiguity
+   and stop architecture-changing work.
+5. Milestones provide implementation evidence only. They cannot create or
+   change architecture.
+6. Research, proposals, experiments, and candidate documents provide context
+   only. They cannot create or change production architecture.
+7. Rules and workflows constrain agent behavior and procedure. They are not
+   architecture sources.
 
-### Tier 4: Research Notes & Static References
-These files contain temporary exploratory studies, timing budgets, or vendor PDFs. They do not constitute active design decisions until formalized.
-* **Research Notes**: e.g., `cpu1_research_plan.md`, `cpu2_research_plan.md`, `pwm_adc_dac_timing_analysis.md`, `analysis_dma_ch5.md`.
-* **Knowledge Base**: Manuals and guides under `03_Knowledge/knowledge/` and device TRM PDFs.
+## Frozen Architecture Assertions
 
----
+- Legacy Register Protocol is the production protocol.
+- SPIB RX owns DMA CH3.
+- SPIB TX owns DMA CH4.
+- DMA CH5 is reserved.
+- DMA CH6 is reserved.
+- EMIF1 SDRAM is the Wave Runtime Source.
+- CPU1 owns system control, parser, and download path.
+- CPU2 owns DDS runtime.
+- W25Q64 is for Boot, OTA, and Maintenance only.
+- W25Q64 is not a DDS runtime source.
+- D11 Packet Protocol is candidate only.
+- D04, D05, and D07 override older PDF assumptions for the wave data pipeline,
+  EMIF1 memory use, and DDS runtime behavior.
+- Research and milestone documents cannot create architecture decisions.
 
-## 2. Crucial Rules for AI Agents
+## Mandatory Conflict Handling
 
-1. **Do Not Synthesize Specs from Milestone Reports**: If a file resides in `02_Milestones/` (or is tagged as `REPORT_`), its design applies only to that isolated milestone validation. Do not assume its configuration represents the global production architecture.
-2. **Prioritize Tier 1 and Tier 2**: When implementing features, reference ONLY the official Active Specifications (Tier 2) and Rules (Tier 1). If there is a conflict between a milestone report and an architecture specification, the Tier 2 specification wins.
+Before using a statement that affects CPU ownership, DMA ownership, protocol
+selection, runtime memory source, or flash use:
+
+1. Check `.agent/00_Project/ASR5K_DECISIONS.md`.
+2. Check `.agent/ARCHITECTURE_CONFLICT_REGISTER.md`.
+3. Check `.agent/DOCUMENT_STATUS_REGISTRY.md`.
+4. Reject statements marked superseded, historical, or reference-only as
+   production authority.
+5. Report any unresolved conflict instead of inventing a resolution.
+
+## Change Control
+
+The hierarchy and frozen assertions may change only through explicit project
+approval. Editing a milestone, research note, workflow, handoff, or candidate
+document does not constitute approval.

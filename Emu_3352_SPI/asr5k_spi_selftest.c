@@ -3,13 +3,15 @@
  *
  * Table-driven SPI Master/Slave self-test engine.
  *
- * 架構分層:
- *   [Test script tables]  每個測試 = 一張 ST_SELFTEST_STEP 步驟表
- *                         + 一個 final validator。多階段測試 (Test3/9)
- *                         不再需要散落的 phase 旗標。
- *   [Engine]              通用步驟執行器 + counter delta 共同驗證。
- *   [Port layer]          asr5k_spi_selftest_port.h — 所有 Master/Slave
- *                         相依集中於此,日後拆分只改 port。
+ * Layered architecture (ASCII-ONLY for MS950 compilation safety):
+ *   [Test script tables]  each test = one ST_SELFTEST_STEP table
+ *                         + one final validator.  Multi-phase tests
+ *                         (Test3/9) no longer need scattered phase flags.
+ *   [Engine]              generic step executor + shared counter-delta
+ *                         verification.
+ *   [Port layer]          asr5k_spi_selftest_port.h - all Master/Slave
+ *                         dependencies live there; a future split only
+ *                         changes the port.
  *
  * SPI traffic is started exclusively through the master port API; all
  * validation uses existing results and diagnostics (read-only observation).
@@ -72,17 +74,18 @@ typedef enum {
 
 /*
  * Per-step check hook.
- * 在該步驟 master 回報 PASSED 後立即呼叫 (例如 Test3 需逐步確認
- * OUTPUT_ON 的中間狀態)。回傳 0 表示通過;非 0 為 fault code,
- * 並透過 *pFailStep 回報失敗位置。
+ * Called right after the master reports PASSED for the step (e.g. Test3
+ * verifies the intermediate OUTPUT_ON state per step).  Returns 0 on pass;
+ * non-zero is a fault code, with *pFailStep reporting the fail location.
  */
 typedef uint16_t (*PFN_STEP_CHECK)(uint16_t u16StepIndex,
                                    uint16_t *pFailStep);
 
 /*
  * Test-level final validator.
- * 引擎已先完成 counter delta 計算與共同驗證,validator 只需檢查
- * 該測試特有的 slave 端狀態,並填寫 result->actual。
+ * The engine has already computed counter deltas and run the shared
+ * checks; the validator only inspects test-specific slave-side state
+ * and fills in result->actual.
  */
 typedef uint16_t (*PFN_TEST_VALIDATE)(volatile ST_ASR5K_SPI_TEST_RESULT *pResult,
                                       uint16_t *pFailStep);
@@ -125,7 +128,7 @@ static uint16_t Validate_Test9_FullPipeline(volatile ST_ASR5K_SPI_TEST_RESULT *p
 
 /* ========================================================================
  * Test scripts
- * 新增測試: 加一張步驟表 + 一個 validator + s_testTable 一列即可。
+ * To add a test: add one step table + one validator + one s_testTable row.
  * ======================================================================== */
 
 /* ---- Test1: single register write -------------------------------------- */
@@ -159,7 +162,7 @@ static const ST_SELFTEST_STEP s_test4Steps[] = {
 };
 
 /* ---- Test5: wave page select --------------------------------------------
- * 0x0958 寫入 page_id,確認 selected-page metadata 正確初始化。      */
+ * Write page_id to 0x0958; confirm selected-page metadata initializes.   */
 #pragma DATA_SECTION(s_test5Steps, "asr5k_spi_selftest_config")
 static const ST_SELFTEST_STEP s_test5Steps[] = {
     { SPI_MASTER_TEST_CMD_WRITE, WAVE_PAGE_SELECT_ADDR, SELFTEST_TARGET_PAGE,
@@ -167,7 +170,7 @@ static const ST_SELFTEST_STEP s_test5Steps[] = {
 };
 
 /* ---- Test6: partial sample write into 0x3000 window ---------------------
- * 寫入 4 筆取樣,確認 window parser 落到正確 page/index。            */
+ * Write 4 samples; confirm the window parser hits the right page/index. */
 #pragma DATA_SECTION(s_test6Steps, "asr5k_spi_selftest_config")
 static const ST_SELFTEST_STEP s_test6Steps[] = {
     { SPI_MASTER_TEST_CMD_WRITE, WAVE_WINDOW_BASE_ADDR + 0U, TEST6_SAMPLE_VALUE(0U),
@@ -188,8 +191,9 @@ static const ST_SELFTEST_STEP s_test7Steps[] = {
 };
 
 /* ---- Test8: validate pre-check (NEGATIVE test) ---------------------------
- * Test6 只寫了 4/4096 筆,validator 必須因 sample count 不足而拒絕。
- * 同時確認 Output 維持 OFF (validation 不得觸發功率級)。            */
+ * Test6 wrote only 4/4096 samples, so the validator must reject the page
+ * for insufficient sample count.  Also confirm Output stays OFF
+ * (validation must never engage the power stage).                        */
 #pragma DATA_SECTION(s_test8Steps, "asr5k_spi_selftest_config")
 static const ST_SELFTEST_STEP s_test8Steps[] = {
     { SPI_MASTER_TEST_CMD_WRITE, WAVE_VALIDATE_ADDR, 0x0001U,
@@ -197,8 +201,10 @@ static const ST_SELFTEST_STEP s_test8Steps[] = {
 };
 
 /* ---- Test9: full pipeline -------------------------------------------------
- * select → full 4096 download → complete → validate(VALID) → activate(LOCKED)
- * 重點: 長傳輸下 DMA CH3 無遺失 (delta 計數一致)、終態正確。          */
+ * select -> full 4096 download -> complete -> validate(VALID)
+ *        -> activate(LOCKED)
+ * Focus: no DMA CH3 loss during the long transfer (delta counters agree)
+ * and the correct final state.                                            */
 #pragma DATA_SECTION(s_test9Steps, "asr5k_spi_selftest_config")
 static const ST_SELFTEST_STEP s_test9Steps[] = {
     { SPI_MASTER_TEST_CMD_WRITE, WAVE_PAGE_SELECT_ADDR, SELFTEST_TARGET_PAGE,
@@ -214,10 +220,10 @@ static const ST_SELFTEST_STEP s_test9Steps[] = {
 };
 
 /* ---- Master test table ----------------------------------------------------
- * u32DmaDoneDelta: 一次 register write/read = 2 frames。
+ * u32DmaDoneDelta: one register write/read = 2 frames.
  *   T5: 1*2   T6: 4*2   T7: 1*2   T8: 1*2
  *   T9: select(2) + 4096-download(>=4100) + ctrl(2)+validate(2)+activate(2)
- *       → minimum 4108。
+ *       -> minimum 4108.
  * -------------------------------------------------------------------------- */
 #pragma DATA_SECTION(s_testTable, "asr5k_spi_selftest_config")
 static const ST_SELFTEST_TEST s_testTable[SELFTEST_EXECUTED_COUNT] = {
@@ -358,11 +364,12 @@ static uint16_t getDiagnosticFault(void)
 
 /* ========================================================================
  * Common counter validation
- * 對整個測試 (所有步驟累計) 的 DMA / parser delta 做一致性驗證:
- *   - dma_done 符合期望 (exact 或 minimum)
- *   - parse_ok == dma_done       (每個 frame 都被成功解析)
+ * Consistency check of DMA / parser deltas accumulated over the whole
+ * test (all steps):
+ *   - dma_done matches expectation (exact or minimum)
+ *   - parse_ok == dma_done       (every frame parsed successfully)
  *   - parse_fail == 0
- *   - dma_restart >= dma_done    (每個 frame 後 DMA 都有被重掛)
+ *   - dma_restart >= dma_done    (DMA re-armed after every frame)
  *   - slave error flags == 0
  * ======================================================================== */
 static uint16_t validateCounters(
@@ -435,7 +442,8 @@ static uint16_t StepCheck_OutputIsOff(uint16_t u16StepIndex,
 
 /* ========================================================================
  * Test validators (final, test-specific checks)
- * 慣例: 先填 result->actual (host 可觀測),再回傳 fault code。
+ * Convention: fill result->actual first (host observable), then return
+ * the fault code.
  * ======================================================================== */
 
 /* ---- Test1: write detail word must echo expected frame ------------------ */
@@ -466,7 +474,8 @@ static uint16_t Validate_Test2_RegisterRead(
 static uint16_t Validate_Test3_OutputToggle(
     volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep)
 {
-    /* 中間狀態已由 step check 驗證,這裡只彙整終態。 */
+    /* Intermediate states were verified by step checks; only summarize
+     * the final state here. */
     uint16_t u16ClearOk =
         ((SelfTestPort_MasterResult16() == 0U) &&
          (SelfTestPort_OutputOn() == 0U)) ? 0U : 1U;
@@ -518,10 +527,10 @@ static uint16_t Validate_Test4_BlockWrite16(
 }
 
 /* ---- Test5: page select metadata -----------------------------------------
- * 0x0958 寫入後:
- *   - u16SelectedPage == 目標 page
- *   - 該 page metadata 重置 (count=0, complete=false)
- *   - page state 進入 DOWNLOADING
+ * After writing 0x0958:
+ *   - u16SelectedPage == target page
+ *   - page metadata reset (count=0, complete=false)
+ *   - page state enters DOWNLOADING
  * -------------------------------------------------------------------------- */
 static uint16_t Validate_Test5_PageSelect(
     volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep)
@@ -549,7 +558,7 @@ static uint16_t Validate_Test5_PageSelect(
 
 /* ---- Test6: window parser writes correct page/index -----------------------
  * actual = (sample_count << 16) | last_window_address
- * 並逐筆讀回比對寫入值。
+ * Also read back every sample and compare against the written value.
  * -------------------------------------------------------------------------- */
 static uint16_t Validate_Test6_SampleWrite(
     volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep)
@@ -568,7 +577,7 @@ static uint16_t Validate_Test6_SampleWrite(
         return SELFTEST_FAULT_WAVE_METADATA;
     }
 
-    /* 必須仍在下載中,不得提前進入 complete */
+    /* Must still be downloading; must not enter complete early. */
     if ((SelfTestPort_WavePageState(u16Page) !=
          WAVE_PAGE_STATE_DOWNLOADING) ||
         (SelfTestPort_WaveDownloadComplete(u16Page) != 0U)) {
@@ -576,7 +585,7 @@ static uint16_t Validate_Test6_SampleWrite(
         return SELFTEST_FAULT_WAVE_METADATA;
     }
 
-    /* 取樣內容逐筆比對 (page/index 對位驗證) */
+    /* Compare sample content one by one (page/index alignment check). */
     for (u16Index = 0U; u16Index < TEST6_SAMPLE_COUNT; u16Index++) {
         if (SelfTestPort_WaveReadSample(u16Page, u16Index) !=
             TEST6_SAMPLE_VALUE(u16Index)) {
@@ -590,7 +599,7 @@ static uint16_t Validate_Test6_SampleWrite(
     return 0U;
 }
 
-/* ---- Test7: DOWNLOADING → DOWNLOAD_COMPLETE -------------------------------- */
+/* ---- Test7: DOWNLOADING -> DOWNLOAD_COMPLETE ------------------------------- */
 static uint16_t Validate_Test7_DownloadComplete(
     volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep)
 {
@@ -605,7 +614,7 @@ static uint16_t Validate_Test7_DownloadComplete(
         return SELFTEST_FAULT_WAVE_METADATA;
     }
 
-    /* metadata 不得被 complete 動作破壞 */
+    /* The complete action must not corrupt the metadata. */
     if ((SelfTestPort_WaveSampleCount(u16Page) != TEST6_SAMPLE_COUNT) ||
         (SelfTestPort_WaveAddressContinuous(u16Page) != 1U)) {
         *pFailStep = ASR5K_SPI_FAIL_STEP_WAVE_METADATA;
@@ -615,12 +624,13 @@ static uint16_t Validate_Test7_DownloadComplete(
 }
 
 /* ---- Test8: validator gatekeeping (negative) -------------------------------
- * Page 只有 4/4096 筆 → validate 必須拒絕:
- *   - page state 結果為 INVALID (而非 VALID)
- *   - 不得 activate / 不得改變 active page
- *   - Output 必須維持 OFF (已由 step check 驗證,這裡再次確認終態)
- * 若 slave 規格定義「拒絕後維持 DOWNLOAD_COMPLETE」,
- * 調整 WAVE_PAGE_STATE_INVALID 巨集即可,引擎不變。
+ * Page holds only 4/4096 samples -> validate must reject:
+ *   - resulting page state is INVALID (not VALID)
+ *   - must not activate / must not change the active page
+ *   - Output must stay OFF (already verified by step check; re-confirm
+ *     the final state here)
+ * If the slave spec defines "stay DOWNLOAD_COMPLETE after rejection",
+ * adjust the WAVE_PAGE_STATE_INVALID macro; the engine is unchanged.
  * -------------------------------------------------------------------------- */
 static uint16_t Validate_Test8_ValidatePrecheck(
     volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep)
@@ -630,7 +640,8 @@ static uint16_t Validate_Test8_ValidatePrecheck(
     pResult->actual = (uint32_t)SelfTestPort_WavePageState(u16Page);
 
     if (SelfTestPort_WavePageState(u16Page) == WAVE_PAGE_STATE_VALID) {
-        /* 不完整 page 卻通過驗證 → validator 沒把關,屬嚴重缺陷 */
+        /* Incomplete page passed validation -> validator failed to
+         * gate; this is a severe defect. */
         *pFailStep = ASR5K_SPI_FAIL_STEP_WAVE_PRECHECK;
         return SELFTEST_FAULT_PRECHECK;
     }
@@ -650,8 +661,8 @@ static uint16_t Validate_Test8_ValidatePrecheck(
 }
 
 /* ---- Test9: full pipeline final state ---------------------------------------
- * 步驟結果 (VALID/LOCKED) 已由 step table 逐步驗證,
- * 這裡確認 slave 端終態與 4096 筆內容完整性。
+ * Per-step results (VALID/LOCKED) were verified by the step table; here
+ * we confirm the slave-side final state and full 4096-sample integrity.
  * -------------------------------------------------------------------------- */
 static uint16_t Validate_Test9_FullPipeline(
     volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep)
@@ -661,7 +672,7 @@ static uint16_t Validate_Test9_FullPipeline(
 
     pResult->actual = (uint32_t)SelfTestPort_WavePageState(u16Page);
 
-    /* metadata 終態 */
+    /* Final metadata state. */
     if ((SelfTestPort_WaveSelectedPage() != u16Page) ||
         (SelfTestPort_WaveSampleCount(u16Page) !=
          WAVE_PAGE_SAMPLE_COUNT) ||
@@ -673,7 +684,7 @@ static uint16_t Validate_Test9_FullPipeline(
         return SELFTEST_FAULT_WAVE_FINAL;
     }
 
-    /* page state / active page 終態 */
+    /* Final page state / active page. */
     if (SelfTestPort_WavePageState(u16Page) != WAVE_PAGE_STATE_LOCKED) {
         *pFailStep = ASR5K_SPI_FAIL_STEP_WAVE_ACTIVATE;
         return SELFTEST_FAULT_WAVE_FINAL;
@@ -684,20 +695,22 @@ static uint16_t Validate_Test9_FullPipeline(
         return SELFTEST_FAULT_WAVE_FINAL;
     }
 
-    /* RAM page 流程不得觸發 Flash commit 路徑 */
+    /* The RAM-page flow must not trigger the Flash commit path. */
     if (SelfTestPort_FlashPathIdle() != 1U) {
         *pFailStep = ASR5K_SPI_FAIL_STEP_WAVE_VALIDATE;
         return SELFTEST_FAULT_WAVE_FINAL;
     }
 
-    /* 後端儲存寫入計數 = 取樣總數 (DMA CH3 無遺失的第二佐證) */
+    /* Storage write count == total samples (second proof that DMA CH3
+     * lost nothing). */
     if (SelfTestPort_WaveWriteCount() <
         (uint32_t)WAVE_PAGE_SAMPLE_COUNT) {
         *pFailStep = ASR5K_SPI_FAIL_STEP_WAVE_SDRAM;
         return SELFTEST_FAULT_WAVE_FINAL;
     }
 
-    /* 4096 筆 ramp 內容全掃描: expected = ((idx+1)*16) 截斷至 16-bit  */
+    /* Full scan of all 4096 ramp samples:
+     * expected = ((idx+1)*16) truncated to 16-bit. */
     for (u16Index = 0U; u16Index < WAVE_PAGE_SAMPLE_COUNT; u16Index++) {
         uint16_t u16Expected =
             (uint16_t)(((uint32_t)u16Index + 1UL) * 16UL);

@@ -676,7 +676,13 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
 
       if (bDelayOk == 1U) {
         if (pstInst->stBlockTx.u16TxIndex < pstInst->stBlockTx.u16Length) {
-          if (!SPI_isBusy(u32BaseAddr)) {
+          /* Pace by TX FIFO space, not SPI_isBusy: writeSpiMasterFrame
+           * uses non-blocking writes which silently DROP words when the
+           * TX FIFO is full.  SPI_isBusy does not guarantee two free
+           * slots, and during the wave burst the main loop refills much
+           * faster than the wire drains, so ~9 of 10 frames were lost
+           * inside the master itself (measured B004-B008). */
+          if (SPI_getTxFIFOStatus(u32BaseAddr) <= SPI_FIFO_TX14) {
             u16 u16Idx = pstInst->stBlockTx.u16TxIndex;
             u16 u16TxAddr, u16TxData;
             
@@ -706,7 +712,7 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
             pstInst->u32TimeoutCnt = 0U;
           }
         } else if (pstInst->stBlockTx.bNullSent == 0U) {
-          if (!SPI_isBusy(u32BaseAddr)) {
+          if (SPI_getTxFIFOStatus(u32BaseAddr) <= SPI_FIFO_TX14) {
             // Trigger flush
             writeSpiMasterFrame(u32BaseAddr, 0xFFFFU, 0x0000U);
 

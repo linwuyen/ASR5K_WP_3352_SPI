@@ -14,9 +14,11 @@ milestone, handoff, research, or implementation material:
 ## Current Project State
 
 - [`.agent/00_Project/ASR5K_HANDOFF.md`](ASR5K_HANDOFF.md) summarizes the
-  current engineering handoff and M5A technical direction.
+  current engineering handoff after M5R Phase 2 transport closure.
 - [`.agent/00_Project/ASR5K_STATUS.md`](ASR5K_STATUS.md) records governance and
   milestone status.
+- [`.agent/02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md`](../02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md)
+  records the verified Legacy burst transport and regression watch list.
 
 ## Controlled Architecture
 
@@ -33,7 +35,7 @@ actual controlling document.
 ## Milestone Evidence
 
 Documents under [`.agent/02_Milestones/`](../02_Milestones/) are milestone
-evidence. M1 through M4 are closed. M5A Wave Download/Test9 is the current work.
+evidence. M1 through M5A and M5R Phase 2 are closed with hardware evidence.
 Milestone documents cannot create or override architecture decisions.
 
 ## Rules and Workflows

@@ -873,7 +873,6 @@ static void completeCurrentStep(void)
     }
 
     /* 4) test finished: common counter validation + final validator */
-    SelfTestPort_DebugCapture();
     calculateDelta(pResult);
     captureFaults(pResult);
 

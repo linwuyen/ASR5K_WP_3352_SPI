@@ -67,11 +67,6 @@ void WaveDownload_SetPage(uint16_t u16Page)
     }
 }
 
-uint16_t WaveDownload_GetPage(void)
-{
-    return g_waveDownload.u16SelectedPage;
-}
-
 /* Storage Access Abstraction */
 static void storage_write_sample(uint16_t u16PageId, uint16_t u16Offset, uint16_t u16Sample)
 {
@@ -246,6 +241,20 @@ uint16_t WaveDownload_GetPageState(uint16_t u16Page)
 bool WaveDownload_HandleWrite(uint16_t u16Address, uint16_t u16Data,
                               uint16_t *pu16Response, uint16_t u16OutputOn)
 {
+    bool bWaveMutation =
+        (u16Address == WAVE_PAGE_SELECT_ADDR) ||
+        (u16Address == WAVE_DOWNLOAD_CTRL_ADDR) ||
+        (u16Address == WAVE_VALIDATE_ADDR) ||
+        (u16Address == WAVE_ACTIVATE_ADDR) ||
+        ((u16Address >= WAVE_DATA_WINDOW_BASE) &&
+         (u16Address <= WAVE_DATA_WINDOW_LIMIT));
+
+    if ((u16OutputOn != 0U) && bWaveMutation)
+    {
+        *pu16Response = 0xFFFFU;
+        return true;
+    }
+
     if (u16Address == WAVE_PAGE_SELECT_ADDR)
     {
         WaveDownload_SetPage(u16Data);

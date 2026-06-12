@@ -15,10 +15,7 @@
 
 typedef enum {
     _INIT_SPI_AS_SLAVE =  0x00000000,
-    _POP_RXD_FROM_SPI  = (0x00010000<<0),
-    _WAIT_FOR_SPI_TIMEOUT,
-
-    _MASK_ERROR_FOR_SPI =  0x80000000
+    _POP_RXD_FROM_SPI  = (0x00010000<<0)
 }FSM_SPI_SLAVE;
 
 typedef enum {
@@ -32,7 +29,6 @@ typedef enum {
 #define SPIB_SYSTEM_BASE       SPIB_BASE
 #endif
 
-#define SIZE_OF_SSS_BUFFER     64
 #define SIZE_OF_SPI_BLOCK_RAM  4095U
 #define SPIB_RX_REG_WORDS      2U
 
@@ -44,6 +40,9 @@ typedef enum {
 #define SPIB_RX_ERR_RX_FIFO_OVERFLOW 0x0002U
 #define SPIB_RX_ERR_DMA_ERROR        0x0004U
 #define SPIB_RX_ERR_FRAME_PARSE_FAIL 0x0008U
+#define SPIB_RX_ERR_POST_WAVE_PARTIAL_FRAME 0x0010U
+#define SPIB_RX_ERR_POST_WAVE_OVERFLOW 0x0020U
+#define SPIB_RX_ERR_TX_STATUS_TIMEOUT 0x0040U
 
 #define SPI_BLOCK_ERROR_NONE             0x0000U
 #define SPI_BLOCK_ERROR_OUT_OF_SEQUENCE  0x0001U
@@ -59,12 +58,6 @@ typedef enum {
 #define SPIB_PACKET_ERROR_UNSUPPORTED_CMD  0x0003U
 #define SPIB_PACKET_ERROR_BLOCK_BUSY       0x0004U
 #define SPIB_PACKET_ERROR_PADDING          0x0005U
-
-typedef struct
-{
-    uint16_t cmd;
-    uint16_t data;
-} SpibRegFrame;
 
 typedef enum {
     FLASH_COMMIT_IDLE = 0,
@@ -104,8 +97,7 @@ typedef enum {
     SPIB_DRV_FAULT_NONE = 0,
     SPIB_DRV_FAULT_DMA_TIMEOUT = 1,
     SPIB_DRV_FAULT_FIFO_OVERFLOW = 2,
-    SPIB_DRV_FAULT_DMA_ERROR = 4,
-    SPIB_DRV_FAULT_OVERRUN = 8          /* M3: DMA done with no free alternate buffer */
+    SPIB_DRV_FAULT_DMA_ERROR = 4
 } SPIB_DRIVER_FAULT_e;
 
 typedef enum {
@@ -178,9 +170,6 @@ typedef volatile struct {
 
     /* u32RxD / u16Rpush / u16Rpop / u16Rcnt ring-buffer removed; replaced by
      * SPI_FIFO_t s_fallbackFifo in spi_b_slave.c. */
-    uint32_t u32TimeMark;
-    uint32_t u32TimeStamp;
-    uint32_t u32Timeout;
 
     /* Diagnostic fields */
     uint32_t u32ResetCount;
@@ -221,42 +210,18 @@ typedef ST_SPI_SLAVE * HAL_SPI_SLAVE;
 
 extern ST_SPI_SLAVE spiB_slave;
 extern volatile uint16_t g_u16SpiBlockRam[SIZE_OF_SPI_BLOCK_RAM];
-/* Raw ping-pong globals (gSpibRxRegFrame, gSpibRxAltFrame, gSpibRxM3*) removed;
- * replaced by SpibDmaPingPong_t s_rxPingPong in spi_b_slave.c. */
+/* Per-frame regression counters. Block mode preserves the same semantics. */
 extern volatile uint32_t gSpibRxDmaDoneCount;
 extern volatile uint32_t gSpibRxParseOkCount;
 extern volatile uint32_t gSpibRxParseFailCount;
 extern volatile uint32_t gSpibRxDmaRestartCount;
 extern volatile uint16_t gSpibRxErrorFlags;
+extern volatile uint16_t gSpibFwBuildTag;
 extern volatile uint16_t OUTPUT_ON;
 extern volatile uint32_t g_u32DebugLastTx;
-extern volatile uint32_t g_u32DebugLastValidResponse;
 extern bool SPIB_RxDmaIsDone(void);
 extern void SPIB_RxDmaClearDone(void);
 extern void SPIB_RxDmaRestart(void);
-extern void SPIB_RxDmaResetDebugCounters(void);
-extern void SPIB_RxDma_ConfigureRegFrame(uint16_t *pDst);
-extern void SPIB_RxDma_Start(void);
-extern void SPIB_RxDma_Stop(void);
-extern void SPIB_RxDma_ClearFlags(void);
-#define SPIB_ClearModuleFault() do {                                     \
-    spiB_slave.stDiag.eHealth = SPIB_HEALTH_OK;                          \
-    spiB_slave.stDiag.eFaultSource = SPIB_FAULT_SOURCE_NONE;             \
-    spiB_slave.stDiag.u16FaultCode = 0U;                                 \
-    spiB_slave.stDiag.stDriver.eState = SPIB_DRV_STATE_INIT;             \
-    spiB_slave.stDiag.stDriver.eFault = SPIB_DRV_FAULT_NONE;             \
-    spiB_slave.stDiag.stProtocol.eState = SPIB_PROT_STATE_IDLE;          \
-    spiB_slave.stDiag.stProtocol.eFault = SPIB_PROT_FAULT_NONE;          \
-    spiB_slave.stDiag.stService.eState = SPIB_SERV_STATE_IDLE;           \
-    spiB_slave.stDiag.stService.eFault = SPIB_SERV_FAULT_NONE;           \
-    gSpibRxErrorFlags = 0U;                                              \
-    spiB_slave.u16PacketErrorCode = SPIB_PACKET_ERROR_NONE;              \
-    spiB_slave.u16BlockErrorCode = SPI_BLOCK_ERROR_NONE;                 \
-    spiB_slave.stat &= ~_SSS_GET_ERROR;                                  \
-    CommDiag_ClearLatch((ST_COMM_DIAG *)&spiB_slave.stDiag.stDriver.stComm);   \
-    CommDiag_ClearLatch((ST_COMM_DIAG *)&spiB_slave.stDiag.stProtocol.stComm); \
-    CommDiag_ClearLatch((ST_COMM_DIAG *)&spiB_slave.stDiag.stService.stComm);  \
-} while (0)
 extern bool SPIB_ParseRegFrame(uint16_t u16Cmd, uint16_t u16Data);
 extern void runSPIBslave(void);
 

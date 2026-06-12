@@ -9,28 +9,29 @@ This handoff summarizes current work but does not create architecture.
 ## Current State
 
 - M1 through M4 are closed.
-- M5A Wave Download/Test9 is the current work.
-- The SPI master can send 4096 waveform samples.
-- The slave's old two-word DMA restart model cannot reliably receive the full
-  waveform stream.
-- The M5 technical issue remains unresolved.
+- M5A Wave Download/Test9 and M5R Phase 2 burst transport are hardware verified.
+- Test1 through Test9 pass with a complete 4096-sample page.
+- The current emulator evidence has zero parse failures and no SPIA/SPIB fault.
 
-## Current Technical Direction
+## Verified Transport
 
-The current receive and storage direction is:
+The hardware-verified emulator transport is:
 
-`SPIB RX FIFO -> DMA CH3 -> GSRAM RX packet/block -> EMIF1 SDRAM`
+`SPIB RX FIFO -> DMA CH3 -> GSRAM RX block -> Wave Download Service`
 
-The intended responsibilities are:
+The frozen production direction continues from the Wave Download Service to
+EMIF1 SDRAM.
 
-1. SPIB RX receives the stream through the hardware FIFO.
-2. DMA CH3 transfers an RX packet or block into GSRAM.
-3. CPU1 validates and moves the accepted waveform data into EMIF1 SDRAM.
-4. CPU2 reads approved waveform data from EMIF1 SDRAM for DDS runtime.
+The `Emu_3352_SPI` transport uses:
 
-This direction replaces reliance on repeatedly restarting DMA for each old
-two-word receive unit. Detailed buffering, block size, completion signaling,
-and error recovery still require implementation verification.
+1. Legacy `WAVE_BURST_BEGIN (0x095B)` with sample count 4096.
+2. Two guard frames before sample 0.
+3. DMA CH3 block reception with bounded force-trigger re-arming.
+4. Suppressed per-sample block ACKs to keep post-burst control replies aligned.
+5. One trailing frame before normal Legacy control traffic resumes.
+
+Detailed evidence and the regression watch list are in
+[`M5R_PHASE2_BURST_TRANSPORT.md`](../02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md).
 
 ## Frozen Architecture Boundaries
 
@@ -46,19 +47,18 @@ and error recovery still require implementation verification.
 
 ## Handoff Risks
 
-- A successful 4096-sample master transmission does not prove complete slave
-  reception.
-- The old two-word DMA restart path can lose continuity across a sustained
-  waveform stream.
-- GSRAM packet/block capacity, DMA completion boundaries, overrun handling, and
-  the GSRAM-to-EMIF1 move must be validated together.
+- A sender that omits `WAVE_BURST_BEGIN` falls back to a best-effort overflow
+  detector and is not guaranteed lossless.
+- Burst MISO is intentionally not a per-sample acknowledgement stream.
+- Changes to guard count, block size, FIFO watermark, force-trigger behavior,
+  or ACK suppression require the full Test1 through Test9 regression.
+- The emulator fake-storage result does not by itself verify the production
+  EMIF1 backend.
 - Source conflicts remain in D01-D05 and D11. Apply
   [`.agent/ARCHITECTURE_CONFLICT_REGISTER.md`](../ARCHITECTURE_CONFLICT_REGISTER.md)
   rather than following their conflicting statements.
 
 ## Next Verification Target
 
-Demonstrate that Test9 can receive the complete 4096-sample stream through DMA
-CH3 into bounded GSRAM packet/block storage, detect transfer errors or overruns,
-and move validated waveform data into EMIF1 SDRAM without changing the frozen
-protocol or CPU ownership model.
+Integrate and verify the production EMIF1 storage backend without changing the
+verified Legacy burst transport or the frozen CPU/DMA ownership model.

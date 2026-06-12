@@ -26,7 +26,6 @@ typedef struct {
     volatile uint16_t activeDmaBuf;     /* 0 = DMA targets Ping, 1 = Pong */
     volatile uint32_t pingDoneCount;
     volatile uint32_t pongDoneCount;
-    volatile uint32_t overrunCount;     /* reserved for future overrun detection */
 } SpibDmaPingPong_t;
 
 /* Initialize all fields to zero; activeDmaBuf starts at Ping (0). */
@@ -42,8 +41,5 @@ volatile uint16_t *SpibPingPong_GetDmaDst(SpibDmaPingPong_t *pp);
  * DMA restart immediately targets the idle buffer.
  */
 volatile uint16_t *SpibPingPong_SwapAndGetFrame(SpibDmaPingPong_t *pp);
-
-/* Self-contained smoke test; returns true on pass. */
-bool SpibPingPong_Test_Run(void);
 
 #endif /* SPI_PINGPONG_H_ */

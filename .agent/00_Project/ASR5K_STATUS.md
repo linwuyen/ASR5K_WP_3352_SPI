@@ -15,16 +15,20 @@
 | Milestone | Status |
 |---|---|
 | M1-M4 | CLOSED |
-| M5A Wave Download/Test9 | CURRENT WORK - UNRESOLVED |
+| M5A Wave Download/Test9 | CLOSED - HARDWARE VERIFIED |
+| M5R Phase 2 Burst Transport | CLOSED - HARDWARE VERIFIED |
 
 ## M5 Technical Status
 
-- The master can send 4096 waveform samples.
-- The slave's old two-word DMA restart model cannot reliably receive the
-  complete waveform stream.
-- Current direction: `SPIB RX FIFO -> DMA CH3 -> GSRAM RX packet/block -> EMIF1 SDRAM`.
-- The receive-block design, complete-stream verification, overrun handling, and
-  transfer into EMIF1 SDRAM remain unresolved.
+- `Emu_3352_SPI` Test1 through Test9 pass on hardware.
+- The Legacy wave path uses `WAVE_BURST_BEGIN (0x095B)`, two guard frames,
+  DMA CH3 ping-pong blocks, and one trailing frame.
+- Full-page reception is verified at 4096 samples with continuous addresses,
+  zero parse failures, and no SPIA/SPIB fault.
+- Per-sample block ACKs are suppressed so the first post-burst control response
+  remains aligned.
+- Production EMIF1 backend integration remains separate from this emulator
+  transport milestone.
 
 ## Frozen Ownership
 
@@ -34,7 +38,9 @@
 - DMA CH3 belongs to SPIB RX; DMA CH4 belongs to SPIB TX.
 - DMA CH5 and CH6 are reserved.
 
-## Phase 2B Scope
+## M5R Phase 2 Evidence
 
-This phase updates project index, handoff, and status documentation only. No
-firmware source code and no D01-D11 document is modified in Phase 2B.
+See
+[`M5R_PHASE2_BURST_TRANSPORT.md`](../02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md)
+for the protocol sequence, transport invariants, hardware evidence, and
+regression watch list.

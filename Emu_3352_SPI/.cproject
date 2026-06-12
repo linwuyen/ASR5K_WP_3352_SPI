@@ -100,7 +100,6 @@
 									<listOptionValue builtIn="false" value="c2000ware_libraries.cmd.genlibs"/>
 									<listOptionValue builtIn="false" value="board.cmd.genlibs"/>
 									<listOptionValue builtIn="false" value="device_cmd.cmd.genlibs"/>
-									<listOptionValue builtIn="false" value="../spib_block_ram.cmd"/>
 									<listOptionValue builtIn="false" value="libc.a"/>
 								</option>
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="com.ti.ccstudio.buildDefinitions.C2000_22.6.linkerID.SEARCH_PATH.611871823" name="Add &lt;dir&gt; to library search path (--search_path, -i)" superClass="com.ti.ccstudio.buildDefinitions.C2000_22.6.linkerID.SEARCH_PATH" valueType="libPaths">
@@ -235,7 +234,6 @@
 									<listOptionValue builtIn="false" value="c2000ware_libraries.cmd.genlibs"/>
 									<listOptionValue builtIn="false" value="board.cmd.genlibs"/>
 									<listOptionValue builtIn="false" value="device_cmd.cmd.genlibs"/>
-									<listOptionValue builtIn="false" value="../spib_block_ram.cmd"/>
 									<listOptionValue builtIn="false" value="libc.a"/>
 								</option>
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="com.ti.ccstudio.buildDefinitions.C2000_22.6.linkerID.SEARCH_PATH.589247672" name="Add &lt;dir&gt; to library search path (--search_path, -i)" superClass="com.ti.ccstudio.buildDefinitions.C2000_22.6.linkerID.SEARCH_PATH" valueType="libPaths">

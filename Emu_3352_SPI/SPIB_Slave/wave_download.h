@@ -73,11 +73,6 @@ void WaveDownload_Init(void);
 void WaveDownload_SetPage(uint16_t u16Page);
 
 /**
- * @brief Get selected page index.
- */
-uint16_t WaveDownload_GetPage(void);
-
-/**
  * @brief Write sample word to selected page SDRAM.
  */
 uint16_t WaveDownload_WriteSample(uint16_t u16Offset, uint16_t u16Sample);

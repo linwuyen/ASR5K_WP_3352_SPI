@@ -190,6 +190,17 @@
 #define V_and_I_Raw_Data_Operate_spi_addr           0x0801
 #define RD_Mode_IO_Control_spi_addr                 0x0802
 #define Print_All_Cali_Variable_spi_addr            0x0803
+// Write 1 to clear the latched slave fault state (stDiag + gSpibRxErrorFlags).
+// Response data = eHealth after the operation (0 = OK).
+#define C2000_Fault_Clear_spi_addr                  0x0804
+
+// Status packet read (D02_2_1 5.2 TX path: TxPing/Pong -> DMA CH4 -> TX FIFO).
+// Master writes SPIB_STATUS_PACKET_WORDS here; the slave acks (CPU, 2 words)
+// and then DMA CH4 streams one SPIB_STATUS_PACKET_WORDS status packet from
+// the freshest ping-pong buffer as the master clocks idle (0xFFFF) frames.
+#define Spi_Status_Packet_Req_spi_addr              0x0805
+#define SPIB_STATUS_PACKET_WORDS                    16U
+#define SPIB_STATUS_PACKET_MAGIC                    0x5AB0U
 
 
 // Control Section
@@ -255,6 +266,16 @@
 #define p_V_Peak_Trip_Set_LSB_spi_addr              0x093E
 #define n_V_Peak_Trip_Set_MSB_spi_addr              0x093F
 #define n_V_Peak_Trip_Set_LSB_spi_addr              0x0940
+
+#define WAVE_PAGE_SELECT_ADDR                       0x0958
+#define WAVE_DOWNLOAD_CTRL_ADDR                     0x0959
+#define WAVE_PAGE_STATUS_ADDR                       0x095A
+#define WAVE_BURST_BEGIN_ADDR                       0x095B
+#define WAVE_VALIDATE_ADDR                          0x0960
+#define WAVE_ACTIVATE_ADDR                          0x0961
+#define WAVE_BURST_SAMPLE_COUNT                     4096U
+#define WAVE_BURST_GUARD_FRAME_COUNT                2U
+#define WAVE_BURST_TRAILING_FRAME_COUNT             1U
 
 // Block transmission & Polling definitions
 #define Spi_Block_Status_spi_addr                   0x0707

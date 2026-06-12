@@ -39,6 +39,5 @@ typedef struct {
 void SPI_FIFO_Init(SPI_FIFO_t *fifo);
 bool SPI_FIFO_Push(SPI_FIFO_t *fifo, const SPI_FRAME_t *frame);
 bool SPI_FIFO_Pop(SPI_FIFO_t *fifo, SPI_FRAME_t *frame);
-bool FIFO_Test_Run(void);
 
 #endif /* SPI_FIFO_H_ */

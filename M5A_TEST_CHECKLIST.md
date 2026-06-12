@@ -1,5 +1,9 @@
 # M5A Wave Download Hardware Validation Checklist
 
+> Historical M5A checklist. The current verified transport contract and watch
+> list are maintained in
+> [`.agent/02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md`](.agent/02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md).
+
 This checklist defines the tomorrow morning hardware validation procedure for the **M5A Wave Download Path** implementation on CPU1.
 
 *   **Target Board**: TMDSCNCD28388D ControlCARD

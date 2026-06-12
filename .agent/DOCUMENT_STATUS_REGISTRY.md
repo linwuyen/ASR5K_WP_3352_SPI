@@ -81,6 +81,7 @@ file below that directory unless a more specific entry assigns another status.
 | `.agent/02_Milestones/M5_WAVE_DOWNLOAD_PLAN.md` | SUPERSEDED | Preparation plan does not represent the current unresolved M5A receive direction. |
 | `.agent/02_Milestones/M5_LEGACY_COMMAND_TO_DDS_INTEGRATION.md` | SUPERSEDED | Direct DDS execution assumptions conflict with frozen CPU ownership. |
 | `.agent/02_Milestones/M5R_PORTABILITY_REVIEW.md` | HISTORICAL | M5A-era portability snapshot and review evidence. |
+| `.agent/02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md` | ACTIVE | Hardware-verified M5R Phase 2 transport evidence and regression watch list; does not create architecture. |
 
 ## Knowledge and Operational Material
 

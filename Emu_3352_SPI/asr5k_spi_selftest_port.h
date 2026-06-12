@@ -187,22 +187,4 @@ static inline uint16_t SelfTestPort_FlashPathIdle(void)
             (spiB_slave.eFlashState == FLASH_COMMIT_IDLE)) ? 1U : 0U;
 }
 
-/* ---- Debug capture hook (optional) --------------------------------------
- * SPIB_DebugCaptureSelfTest() has no implementation in this project, so it
- * is disabled by default to avoid link failures.  If the slave module
- * provides it, enable with build option
- *   -DASR5K_SELFTEST_ENABLE_DEBUG_CAPTURE=1
- * with no engine change required.
- * ------------------------------------------------------------------------ */
-#ifndef ASR5K_SELFTEST_ENABLE_DEBUG_CAPTURE
-#define ASR5K_SELFTEST_ENABLE_DEBUG_CAPTURE 0
-#endif
-
-static inline void SelfTestPort_DebugCapture(void)
-{
-#if ASR5K_SELFTEST_ENABLE_DEBUG_CAPTURE
-    SPIB_DebugCaptureSelfTest();
-#endif
-}
-
 #endif /* ASR5K_SPI_SELFTEST_PORT_H_ */

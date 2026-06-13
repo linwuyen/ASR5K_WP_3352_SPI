@@ -1,13 +1,21 @@
 # ==============================================================================
 # Google Antigravity SDK - Agent Hooks Implementation
 # Target: TI C2000 Firmware Development Constraints
-# Version: 1.2.0
+# Version: 1.3.0
 # ==============================================================================
 
 import re
 import os
 import logging
-from antigravity import hooks, events, AgentAction, ValidationResult
+
+try:
+    from antigravity import hooks, events, AgentAction, ValidationResult
+except (ImportError, AttributeError) as exc:
+    raise RuntimeError(
+        "Google Antigravity hook SDK is unavailable or shadowed by Python's "
+        "standard-library antigravity module. These hooks are inactive and "
+        "must not be treated as an enforced safety boundary."
+    ) from exc
 
 # ------------------------------------------------------------------------------
 # Hook 1: 沙盒強制攔截器 (Sandbox Enforcer)
@@ -25,8 +33,9 @@ def enforce_sandbox_prefix(event: events.ToolCallEvent) -> AgentAction:
             target_file = event.tool_args.get("TargetFile", "")
 
             if not target_file:
-                logging.warning("[Sandbox] TargetFile 未提供，無法執行沙盒前綴保護，允許通過。")
-                return AgentAction.ALLOW()
+                raise ValueError(
+                    "[Sandbox] TargetFile is required during implement phase."
+                )
 
             dirname, filename = os.path.split(target_file)
             basename, ext = os.path.splitext(filename)
@@ -55,8 +64,10 @@ def enforce_sandbox_prefix(event: events.ToolCallEvent) -> AgentAction:
         return AgentAction.ALLOW()
 
     except Exception as e:
-        logging.error(f"[Hook Error] enforce_sandbox_prefix 發生異常: {e}，降級允許通過。")
-        return AgentAction.ALLOW()  # 降級允許，防止主流程阻塞
+        logging.exception("[Hook Error] enforce_sandbox_prefix failed closed")
+        raise RuntimeError(
+            "Sandbox hook failed; write operation must be blocked."
+        ) from e
 
 # ------------------------------------------------------------------------------
 # Hook 2: MS950 編碼與 ASCII 檢查 (MS950 Compliance Validator)
@@ -82,8 +93,10 @@ def verify_ms950_compliance(event: events.CodeGenerationEvent) -> ValidationResu
         return ValidationResult.PASS()
 
     except Exception as e:
-        logging.error(f"[Hook Error] verify_ms950_compliance 發生異常: {e}，降級允許通過。")
-        return ValidationResult.PASS()
+        logging.exception("[Hook Error] verify_ms950_compliance failed closed")
+        return ValidationResult.REJECT(
+            feedback=f"[Hook failure] Encoding validation could not run: {e}"
+        )
 
 # ------------------------------------------------------------------------------
 # Hook 3: C2000 物理邊界與第一性原理掃描 (Core Constraints Scanner)
@@ -137,5 +150,7 @@ def verify_c2000_constraints(event: events.FileSaveEvent) -> ValidationResult:
         return ValidationResult.PASS()
 
     except Exception as e:
-        logging.error(f"[Hook Error] verify_c2000_constraints 發生異常: {e}，降級允許通過。")
-        return ValidationResult.PASS()
+        logging.exception("[Hook Error] verify_c2000_constraints failed closed")
+        return ValidationResult.REJECT(
+            feedback=f"[Hook failure] C2000 constraint validation could not run: {e}"
+        )

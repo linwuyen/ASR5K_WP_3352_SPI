@@ -4,7 +4,7 @@
 
 **依賴套件（請先安裝）**：
 ```bash
-pip install pymupdf   # query_trm.py 依賴 PyMuPDF (fitz) 進行 PDF 全文搜尋
+python -m pip install -r .agent/skills/requirements.txt
 ```
 
 ---
@@ -28,14 +28,21 @@ python query_trm.py SPI SPICCR
 
 **回傳內容**：TRM PDF 中最相關的 2 頁暫存器定義（含位元欄位說明）。
 
+**可用性檢查**：
+```bash
+python .agent/skills/query_trm.py --dependency-check
+```
+
+依賴檢查失敗時，不得宣稱 TRM 查詢工具可用。
+
 ---
 
 ### `query_driverlib.py`
 
 用於檢索 TI C2000Ware DriverLib 本地安裝的原始碼，獲取函式原型、參數型別與 Doxygen 說明，防止 API 簽名幻覺（Hallucination）。
 
-**DriverLib 路徑**：`C:\ti\c2000\C2000Ware_5_04_00_00\driverlib\f2838x\driverlib`
-（若安裝於其他位置，可設定環境變數 `C2000WARE_DRIVERLIB` 覆蓋預設路徑）
+**DriverLib 路徑**：優先使用環境變數 `C2000WARE_DRIVERLIB`，否則掃描
+`C:\ti\c2000\C2000Ware_*` 並選擇最新版本。
 
 **使用方式**：
 ```bash
@@ -48,6 +55,26 @@ python query_driverlib.py ADC ADC_setupSOC
 ```
 
 **回傳內容**：完整函式宣告原型（含 `uint32_t`/`uint16_t` 等 stdint 參數型別）+ 前置 Doxygen `//!` 說明區塊。
+
+---
+
+### `pre_flight_check.py`
+
+提供實際可執行的檢查入口：
+
+```bash
+python .agent/skills/pre_flight_check.py --check-division path/to/source.c
+python .agent/skills/pre_flight_check.py --safety-scan path/to/source.c
+python .agent/skills/pre_flight_check.py --all path/to/source.c
+```
+
+任何檢查違規或工具異常都以非零 exit code 結束。
+
+### `agent_hooks.py`
+
+Hooks 只有在真正的 Google Antigravity SDK 可匯入時才視為啟用。若 SDK
+缺失、被 Python 標準函式庫同名模組遮蔽，或 hook 執行發生例外，必須
+fail closed，不得降級為允許寫入或驗證通過。
 
 ---
 

@@ -62,3 +62,10 @@ Detailed evidence and the regression watch list are in
 
 Integrate and verify the production EMIF1 storage backend without changing the
 verified Legacy burst transport or the frozen CPU/DMA ownership model.
+
+Entry to that work is gated by:
+
+1. Passing `python .agent/ci/run_checks.py`.
+2. Preserving the canonical `EMPTY=0` through `LOCKED=6` state model.
+3. Implementing and verifying D10 checksum behavior, or obtaining a separately
+   approved scoped decision.

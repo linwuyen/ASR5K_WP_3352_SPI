@@ -25,6 +25,7 @@ file below that directory unless a more specific entry assigns another status.
 | `.agent/00_Project/AGENT_INDEX.md` | ACTIVE | Phase 2B governance-first document index. |
 | `.agent/00_Project/ASR5K_HANDOFF.md` | ACTIVE | Current M5A Wave Download/Test9 handoff. |
 | `.agent/00_Project/ASR5K_STATUS.md` | ACTIVE | Current governance and milestone status. |
+| `.agent/00_Project/M5_GOVERNANCE_REPAIR_REPORT.md` | ACTIVE | Current governance-repair evidence and gate report; not architecture authority. |
 | `.agent/00_Project/M3_HANDOFF_PROMPT.md` | HISTORICAL | M3-era handoff evidence only. |
 
 ## Architecture Documents
@@ -43,7 +44,7 @@ file below that directory unless a more specific entry assigns another status.
 | `.agent/01_Architecture/ASR5K設計文件/D10_WAVE_VALIDATION_POLICY*.md` | ACTIVE | Current validation-policy authority. |
 | `.agent/01_Architecture/ASR5K設計文件/D11_AM3352_PROTOCOL*.md` | REFERENCE_ONLY | Protocol study/candidate only; cannot select production protocol. |
 | `.agent/01_Architecture/SPEC_FIRMWARE_ARCH.md` | ACTIVE | Supporting firmware architecture where consistent with higher authority. |
-| `.agent/01_Architecture/SPEC_M5_WAVE_DOWNLOAD.md` | ACTIVE | Supporting download specification where consistent with frozen ownership and protocol decisions. |
+| `.agent/01_Architecture/SPEC_M5_WAVE_DOWNLOAD.md` | ACTIVE | Supporting download specification only where consistent with M5R Phase 2 evidence, D10 validation policy, approved decisions, and the conflict register. Milestone evidence cannot override D10 or frozen architecture. |
 | `.agent/01_Architecture/cpu1_research_plan.md` | REFERENCE_ONLY | CPU1 research plan; not current project status or production authority. |
 | `.agent/01_Architecture/cpu2_research_plan.md` | REFERENCE_ONLY | CPU2 research plan; not current project status or production authority. |
 | `.agent/01_Architecture/ASR5K設計文件/R*.md` | REFERENCE_ONLY | R-series research documents. |
@@ -88,7 +89,8 @@ file below that directory unless a more specific entry assigns another status.
 | File or Pattern | Status | Governing Note |
 |---|---|---|
 | `.agent/03_Knowledge/**` | REFERENCE_ONLY | Supporting knowledge and binary references; validate against controlled sources before use. |
-| `.agent/skills/**` | REFERENCE_ONLY | Operational tooling and instructions; not architecture authority. |
+| `.agent/skills/**` | REFERENCE_ONLY | Operational tooling and instructions; not architecture authority. Tool availability must be established by executable checks, not declarations alone. |
+| `.agent/ci/**` | REFERENCE_ONLY | Governance validation tooling; not architecture authority. |
 
 ## Usage Rule
 

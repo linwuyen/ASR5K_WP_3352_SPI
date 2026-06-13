@@ -31,6 +31,25 @@
 #define WAVE_MAX_PAGES              256U
 #define WAVE_PAGE_INVALID           0xFFFFU
 
+/* Sandbox fake SDRAM only backs pages 0..WAVE_FAKE_SDRAM_PAGES-1.  This is the
+ * single source for that count: storage access (g_pFakeSdramPages[]) and the
+ * per-page storage-consistency checksum must agree on it. */
+#define WAVE_FAKE_SDRAM_PAGES       3U
+
+/* Validation error codes (subset of D10 section 17 "Error Codes").
+ * Reported via g_waveDownload.u16LastValidateError after WaveDownload_ValidatePage.
+ * NOTE: WAVE_VALIDATE_ERR_CHECKSUM here is produced by the M5 sandbox
+ * storage-consistency checksum (write->storage->readback), NOT the full
+ * D10 per-sample transport checksum area (deferred to EMIF1/formal board). */
+#define WAVE_VALIDATE_ERR_NONE                  0x0000U
+#define WAVE_VALIDATE_ERR_INVALID_PAGE_ID       0x0001U
+#define WAVE_VALIDATE_ERR_OUTPUT_ON             0x0002U
+#define WAVE_VALIDATE_ERR_ADDRESS_OUT_OF_RANGE  0x0003U
+#define WAVE_VALIDATE_ERR_ADDRESS_DISCONTINUITY 0x0004U
+#define WAVE_VALIDATE_ERR_SAMPLE_COUNT          0x0005U
+#define WAVE_VALIDATE_ERR_CHECKSUM              0x0006U
+#define WAVE_VALIDATE_ERR_DOWNLOAD_COMPLETE     0x0007U
+
 /* D10-compatible page states only */
 typedef enum {
     WAVE_PAGE_STATE_EMPTY = 0,
@@ -47,16 +66,19 @@ typedef struct {
     uint32_t u32VerifyFailCount;    /* Total read-back mismatch count (DIAG_SELFTEST only) */
     uint16_t u16LastVerifyExpected; /* Last expected value (DIAG_SELFTEST only) */
     uint16_t u16LastVerifyObserved; /* Last observed value (DIAG_SELFTEST only) */
+    uint32_t u32ChecksumErrorCount; /* M5 storage-consistency checksum mismatch count */
 } ST_WAVE_DOWNLOAD_DIAG;
 
 typedef struct {
     uint16_t u16SelectedPage;                   /* Selected Page Index (0-255 or 0xFFFF) */
     uint16_t u16ActivePage;                     /* Currently active page index used by DDS */
+    uint16_t u16LastValidateError;              /* Last WaveDownload_ValidatePage error (WAVE_VALIDATE_ERR_*) */
     uint16_t u16PageState[WAVE_MAX_PAGES];      /* State of each of the 256 pages */
     uint16_t u16SampleCount[WAVE_MAX_PAGES];    /* Number of samples received for each page */
     uint16_t u16LastAddress[WAVE_MAX_PAGES];    /* Last sample address received for continuity check */
     bool     bAddressContinuous[WAVE_MAX_PAGES]; /* Whether address sequence has been continuous */
     bool     bDownloadComplete[WAVE_MAX_PAGES]; /* Whether complete command has been received */
+    uint32_t u32PageChecksum[WAVE_FAKE_SDRAM_PAGES]; /* M5 sandbox per-page storage-consistency checksum (fake SDRAM pages 0..2 only) */
     ST_WAVE_DOWNLOAD_DIAG stDiag;               /* Diagnostic counters */
 } ST_WAVE_DOWNLOAD;
 

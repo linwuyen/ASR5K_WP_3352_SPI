@@ -17,6 +17,8 @@ milestone, handoff, research, or implementation material:
   current engineering handoff after M5R Phase 2 transport closure.
 - [`.agent/00_Project/ASR5K_STATUS.md`](ASR5K_STATUS.md) records governance and
   milestone status.
+- [`.agent/00_Project/M5_GOVERNANCE_REPAIR_REPORT.md`](M5_GOVERNANCE_REPAIR_REPORT.md)
+  records the M5 governance repair, conflict impact, and production gate.
 - [`.agent/02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md`](../02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md)
   records the verified Legacy burst transport and regression watch list.
 
@@ -45,6 +47,10 @@ Milestone documents cannot create or override architecture decisions.
 
 Rules and workflows are not architecture authorities. Where their content
 conflicts with the governance core, the governance core controls.
+
+Run `python .agent/ci/run_checks.py` from the repository root before
+architecture-sensitive implementation. A passing check does not replace
+hardware verification or document-authority review.
 
 ## Research and Reference Material
 

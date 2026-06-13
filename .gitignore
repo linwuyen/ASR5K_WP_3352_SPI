@@ -3,3 +3,5 @@
 dvt/
 RemoteSystemsTempFiles/
 *.log
+__pycache__/
+

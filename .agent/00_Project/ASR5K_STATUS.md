@@ -9,6 +9,11 @@
   governed by
   [`.agent/ARCHITECTURE_CONFLICT_REGISTER.md`](../ARCHITECTURE_CONFLICT_REGISTER.md).
 - Conflicting source text has not yet been corrected.
+- M5 governance repair aligns the supporting specification to the verified
+  `EMPTY=0` through `LOCKED=6` state model and documents
+  `WAVE_BURST_BEGIN (0x095B)`.
+- Full D10 checksum compliance and production EMIF1 backend verification remain
+  open gates.
 
 ## Milestones
 
@@ -44,3 +49,12 @@ See
 [`M5R_PHASE2_BURST_TRANSPORT.md`](../02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md)
 for the protocol sequence, transport invariants, hardware evidence, and
 regression watch list.
+
+## Production EMIF1 Gate
+
+Before production EMIF1 backend implementation:
+
+1. Run `python .agent/ci/run_checks.py`.
+2. Preserve Legacy protocol and DMA CH3/CH4 ownership.
+3. Preserve CPU1 write and CPU2 runtime-read ownership.
+4. Resolve D10 checksum implementation evidence without inventing new states.

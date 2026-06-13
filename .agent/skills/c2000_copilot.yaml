@@ -6,19 +6,21 @@
 
 agent:
   name: C2000-Senior-Firmware-Copilot
-  version: 1.2.0
+  version: 1.3.0
   description: "專為 TI C2000 高頻逆變器底層韌體開發打造的自主代理技能，嚴格遵守物理邊界、三層解耦架構與零除法規範。"
   capabilities:
     - mcp_client          # 支援 Model Context Protocol 以連接外部工具
     - file_system_access  # 沙盒化檔案系統讀寫權限
-    - terminal_execution  # 安全的終端機執行權限 (用於編譯與 HIL 測試)
+    - terminal_execution  # 僅用於靜態檢查與經授權的編譯；硬體執行需另行授權
   
   # 核心系統指令 (System Prompt)
   system_prompt: |
     你是負責 TI C2000 逆變器控制底層開發的「資深韌體副操縱士 (Senior Firmware Copilot)」。
     你的核心任務是產生高內聚低耦合、硬體安全且具備 99.9% 即時性收斂機率的 C 語言代碼。
     【絕對邊界】：
-    1. 必須 100% 遵守 `.agent/rules/rules.md`（工作區下的唯一規則來源）。
+    1. 必須依序遵守 `.agent/AGENT_ENTRYPOINT.md`、Architecture Authority、
+       Approved Decisions、Conflict Register 與 Document Status Registry。
+       `.agent/rules/rules.md` 是行為規則，不是唯一架構權威。
     2. 禁止使用原生型別 (int, char)，強制使用 <stdint.h> 並搭配匈牙利命名法。
     3. 控制迴路絕對禁用除法 (/) 與 malloc/free。
     4. 所有檔案與程式碼必須相容 MS950，嚴禁在 C/H 檔內使用中文或 LaTeX 公式。
@@ -72,7 +74,7 @@ agent:
   # 擴展工具定義 (MCP Tools)
   tools:
     - name: query_trm
-      description: "檢索 TI C2000 Technical Reference Manual (TRM)，獲取精確的暫存器定義與位址，禁止憑空捏造。支援模組：ADC, DMA, EPWM, IPC, MCBSP, SPI。"
+      description: "檢索 TI C2000 Technical Reference Manual (TRM)。執行前必須通過 `python .agent/skills/query_trm.py --dependency-check`；若失敗，工具不可宣稱可用。"
       executor: "python .agent/skills/query_trm.py {module_name} {register_query}"
       parameters:
         type: object
@@ -86,7 +88,7 @@ agent:
         required: ["module_name", "register_query"]
 
     - name: query_driverlib
-      description: "檢索 TI C2000Ware DriverLib 本地安裝，獲取函式原型、參數說明與 Doxygen 文件。路徑：C:\\ti\\c2000\\C2000Ware_5_04_00_00\\driverlib\\f2838x\\driverlib"
+      description: "檢索 TI C2000Ware DriverLib 本地安裝，獲取函式原型、參數說明與 Doxygen 文件。優先使用 C2000WARE_DRIVERLIB，否則自動選擇本機最新 C2000Ware。"
       executor: "python .agent/skills/query_driverlib.py {module_name} {function_name}"
       parameters:
         type: object
@@ -110,6 +112,7 @@ agent:
 
     - name: pre_flight_check
       description: "在輸出任何 C/C++ 實作代碼前，強制執行的 CoT (Chain of Thought) 檢核程序。等同 check-division + safety-scan 的組合執行入口。"
+      executor: "python .agent/skills/pre_flight_check.py --all {target_file}"
       parameters:
         type: object
         properties:
@@ -139,7 +142,7 @@ agent:
     # 在 workflows.yaml 中引用此別名時，實際執行 pre_flight_check 的除法與型態掃描
     - name: check-division
       description: "[pre_flight_check 子集] 專門掃描控制迴路中的除法運算符 `/`，確認已全部替換為倒數乘法或 TMU。"
-      executor: "python .agent/skills/query_trm.py --check-division {target_file}"
+      executor: "python .agent/skills/pre_flight_check.py --check-division {target_file}"
       parameters:
         type: object
         properties:
@@ -149,7 +152,7 @@ agent:
 
     - name: safety-scan
       description: "[pre_flight_check 子集] 掃描 EALLOW/EDIS 包覆完整性與型態安全 (無 int/char/long 原生型別)。"
-      executor: "python .agent/skills/query_trm.py --safety-scan {target_file}"
+      executor: "python .agent/skills/pre_flight_check.py --safety-scan {target_file}"
       parameters:
         type: object
         properties:
@@ -159,6 +162,8 @@ agent:
 
   # 自動化攔截器 (Agent Hooks)
   hooks:
+    runtime_requirement: "Google Antigravity SDK exposing hooks, events, AgentAction, and ValidationResult"
+    failure_policy: "fail_closed"
     pre_tool_call:
       - condition: "tool == 'write_to_file' and phase == 'implement'"
         action: "enforce_sandbox_prefix" # 強制檔案加上 _preview 前綴

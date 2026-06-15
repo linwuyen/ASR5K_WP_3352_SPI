@@ -1,4 +1,4 @@
-# ASR5K Project Handoff
+﻿# ASR5K Project Handoff
 
 ## Required Reading
 

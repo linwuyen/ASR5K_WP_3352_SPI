@@ -1,4 +1,4 @@
-# Modbus Slave Implementation
+﻿# Modbus Slave Implementation
 
 This directory contains the implementation of a Modbus Slave for the F28377D V2 BUCK CPU1 project. The Modbus Slave allows communication over a serial interface (SCI) using the Modbus RTU protocol, enabling remote monitoring and control of the device's parameters and status.
 

@@ -1,4 +1,4 @@
-# D05_EMIF1_MEMORY_MAP.md
+﻿# D05_EMIF1_MEMORY_MAP.md
 
 ## 1. Purpose
 

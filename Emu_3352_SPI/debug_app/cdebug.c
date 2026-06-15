@@ -33,6 +33,8 @@ ST_DEBUG sDebug = {
     .u32Fsm = _INIT_DEBUG,
 };
 
+volatile ST_SCIA_DEBUG_DIAG g_sciaDebugDiag;
+
 void initSciGpio(void)
 {
     GPIO_setControllerCore(DEBUG_SCI_SCIRX_GPIO, GPIO_CORE_CPU1);
@@ -58,6 +60,7 @@ void initSciModule(void){
     SCI_performSoftwareReset(DEBUG_SCI_BASE);
     SCI_enableFIFO(DEBUG_SCI_BASE);
     SCI_enableModule(DEBUG_SCI_BASE);
+    g_sciaDebugDiag.u32InitCount++;
 }
 
 void resetSciModule(void){

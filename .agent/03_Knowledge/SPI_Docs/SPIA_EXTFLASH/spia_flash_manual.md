@@ -1,4 +1,4 @@
-# HW_SPI_Flash_Verification_Manual
+﻿# HW_SPI_Flash_Verification_Manual
 
 本文件記錄 ASR5K V2 控制板上 W25Q64JV SPI Flash 的硬體配置參數與測試驗證流程。
 

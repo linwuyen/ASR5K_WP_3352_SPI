@@ -1,4 +1,4 @@
-# M3_CPU1_DMA_RXFRAME_INTEGRATION Architecture Contract (PASS / CLOSED)
+﻿# M3_CPU1_DMA_RXFRAME_INTEGRATION Architecture Contract (PASS / CLOSED)
 
 ---
 

@@ -1,4 +1,4 @@
-# SPI 主從機通訊優化與時序對齊設計說明書 (spib_optimization_rationale.md)
+﻿# SPI 主從機通訊優化與時序對齊設計說明書 (spib_optimization_rationale.md)
 
 本文件詳述了針對 ASR5K 系統中 SPIB 主從通訊模組，在高速壓力測試與從機背景執行 Flash 參數保存時，通訊容易阻塞、丟包或發生相位錯位 (Phase Shift) 的問題分析，以及最終量產實現的深度時序優化與自癒機制。
 

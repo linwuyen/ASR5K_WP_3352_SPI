@@ -1,4 +1,4 @@
-# M3 Handoff Prompt
+﻿# M3 Handoff Prompt
 
 This document serves as the official handoff prompt to continue development from **M3** in a new session. It defines project context, architectural guidelines, current milestone status, and the immediate next steps.
 

@@ -1,4 +1,4 @@
-# ASR5K_M0_COMM
+﻿# ASR5K_M0_COMM
 
 # ASR5K_M0 通訊接口與內存映射規格
 

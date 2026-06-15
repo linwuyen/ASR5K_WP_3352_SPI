@@ -1,4 +1,4 @@
-# ASR5K SPI Master/Slave 自動化自檢測試框架 (WP_3352_SPI)
+﻿﻿# ASR5K SPI Master/Slave 自動化自檢測試框架 (WP_3352_SPI)
 
 本專案實作了 ASR5K 系統中 SPIA Master (模擬端) 與 SPIB Slave (實體端) 之間的非阻塞自動化自檢測試框架 (Self-Test Framework)。
 

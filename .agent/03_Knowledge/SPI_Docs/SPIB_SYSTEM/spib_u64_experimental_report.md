@@ -1,4 +1,4 @@
-# U64_PACK 64-bit 浮點數通訊實驗計畫與測試報告 (spib_u64_experimental_report.md)
+﻿# U64_PACK 64-bit 浮點數通訊實驗計畫與測試報告 (spib_u64_experimental_report.md)
 
 本文件整合了 ASR5K 專案中，主從機 SPIB 通訊鏈路引入 64-bit 封包 (U64_PACK) 以傳輸 32-bit float 單精度浮點數的**實驗性實作計畫**與**測試報告**。
 

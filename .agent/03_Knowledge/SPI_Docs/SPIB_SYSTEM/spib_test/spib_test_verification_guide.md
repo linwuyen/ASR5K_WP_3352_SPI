@@ -1,4 +1,4 @@
-# SPIB 主從通訊整合設計與實體驗證指南 (spib_test_verification_guide.md)
+﻿# SPIB 主從通訊整合設計與實體驗證指南 (spib_test_verification_guide.md)
 
 本文件整合了 ASR5K 系統中，主機 (Master, C2000 CPU1 模擬端) 與從機 (Slave, C2000 CPU1 實體端) 之間的**實體硬體接線**、**SysConfig 軟體配置**、**驅動程式 API 參考**、**FIFO 指針工作概念**，以及 **5 大實機測試驗證情境**。
 

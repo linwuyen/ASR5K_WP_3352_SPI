@@ -1,4 +1,4 @@
-# ASR5K V2 CPU2 — 實體 FSI 串接指南
+﻿# ASR5K V2 CPU2 — 實體 FSI 串接指南
 
 本指南說明如何將 CPU2 目前的「DMA 模擬架構」遷移至「實體 FSI 硬體網絡」。
 

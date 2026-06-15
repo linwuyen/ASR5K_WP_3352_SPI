@@ -1,4 +1,4 @@
-# ASR5K 主從機 SPI 通訊協定與封包規範 (spib_protocol_spec.md)
+﻿# ASR5K 主從機 SPI 通訊協定與封包規範 (spib_protocol_spec.md)
 
 本文件定義主機 (AM3352 Master / 模擬端) 與從機 (C2000 Slave) 之間的 32-bit 標準全雙工流水線通訊協定，以及 64-bit 實驗性浮點數封包格式。本文件已收斂所有歷史衝突，作為本專案之單一真相來源 (SSOT)。
 

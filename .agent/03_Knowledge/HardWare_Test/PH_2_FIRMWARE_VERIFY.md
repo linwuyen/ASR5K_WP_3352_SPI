@@ -1,4 +1,4 @@
-# ASR5K Control Card - Phase 2: Firmware Functional Verification
+﻿# ASR5K Control Card - Phase 2: Firmware Functional Verification
 
 本文件定義 ASR5K Control Card 的自動化韌體驗證項目，透過執行特定測試代碼來確認系統的高速性能。
 

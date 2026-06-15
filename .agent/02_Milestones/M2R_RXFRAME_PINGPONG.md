@@ -1,4 +1,4 @@
-# Milestone: M2R_RXFRAME_PINGPONG (RxFrame Ping/Pong Buffer)
+﻿# Milestone: M2R_RXFRAME_PINGPONG (RxFrame Ping/Pong Buffer)
 
 ## 1. Goal
 Establish a dual legacy-frame buffer (Ping/Pong) structure to receive high-speed waveform download data without CPU bottlenecks. This milestone implements the core buffer management and state transitions, validated by a self-test suite, before physical SPI integration.

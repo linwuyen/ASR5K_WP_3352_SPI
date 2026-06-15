@@ -1,4 +1,4 @@
----
+﻿---
 name: verify
 description: "[SDD 階段四] 實體硬體驗證與 Git 交付。要求物理驗證數據（示波器波形/暫存器 Log），通過後生成 Conventional Commit 並進行雙源推送。"
 ---

@@ -1,4 +1,4 @@
-# M2 FIFO Circular Buffer Report (M2_FIFO.md)
+﻿# M2 FIFO Circular Buffer Report (M2_FIFO.md)
 
 > [!NOTE]
 > **Status: Experimental Utility / Not Runtime Main Path**

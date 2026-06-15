@@ -64,6 +64,23 @@ Stop architecture-changing work and report the issue when:
 - a requested change promotes Packet Protocol to production;
 - a document's status or authority cannot be established.
 
+
+## Mandatory AI Boot Guardrails
+
+Before starting any task in the ASR5K project, the AI must verify and record:
+
+1. Current repository root path.
+2. Current Git branch and commit hash.
+3. Total count of Markdown files under `.agent/`.
+   - The count must be reported.
+   - If the count differs from a previous audit, output a warning.
+   - Do not fail solely because the count changed.
+4. Explicit confirmation that `DOCUMENT_STATUS_REGISTRY.md` has been read and applied.
+5. Explicit confirmation that `ASR5K_DECISIONS.md` has been read and applied.
+6. Explicit confirmation that `SPEC_M5_WAVE_DOWNLOAD.md` has been read and applied.
+7. Explicit confirmation that `0x095B` is parsed as a normal Legacy register write, NOT a Packet Protocol frame.
+8. Explicit confirmation that `M5R_PHASE2_BURST_TRANSPORT.md` is treated strictly as `ACTIVE_EVIDENCE` for regression watch lists, not as an architectural specification.
+
 ## Required Boot Report
 
 Before substantial work, record:

@@ -1,4 +1,4 @@
-# M5_WAVE_SDRAM_TRANSPORT_CLOSURE_PLAN
+﻿# M5_WAVE_SDRAM_TRANSPORT_CLOSURE_PLAN
 
 建立：2026-06-14
 性質：**設計/收斂計畫。本計畫不修改任何正式架構文件，亦不在本階段改 code。**

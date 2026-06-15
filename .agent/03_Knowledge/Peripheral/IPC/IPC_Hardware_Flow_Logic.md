@@ -1,4 +1,4 @@
-# IPC 通訊硬體流轉與邏輯詳解 (Hardware Flow Detail)
+﻿# IPC 通訊硬體流轉與邏輯詳解 (Hardware Flow Detail)
 ---
 
 ## 1. 核心組件 (Physical Components)

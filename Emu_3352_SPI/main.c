@@ -8,7 +8,8 @@
 #include "c2000ware_libraries.h"
 #include "device.h"
 #include "driverlib.h"
-#include "timetask.h"
+#include "common.h"
+#include "shareram.h"
 
 // SPI modules: master task, slave task, self-test automation.
 // spi_fifo / spi_pingpong are internal details of spi_b_slave and are
@@ -17,8 +18,17 @@
 #include "SPIB_Slave/spi_slave.h"
 #include "asr5k_spi_selftest.h"
 
+#ifdef _FLASH
+#pragma DATA_SECTION(sAccessCPU1, "MSGRAM_CPU1_TO_CPU2")
+ST_SHARERAM sAccessCPU1;
 
+#pragma DATA_SECTION(sReadCPU2, "MSGRAM_CPU2_TO_CPU1")
+ST_SHARERAM sReadCPU2;
 
+ST_DRV sDrv = {
+    .fgStatus = _CSTAT_INIT_DRV_PARAM,
+};
+#endif
 // Main
 
 //
@@ -75,5 +85,9 @@ void main(void) {
     runSPIAmaster();
     // Run the non-blocking SPI test document automation.
     Asr5kSpiSelfTest_Run();
+#ifdef _FLASH
+    // Service the SCIA Modbus/debug port.
+    runDebug();
+#endif
   }
 }

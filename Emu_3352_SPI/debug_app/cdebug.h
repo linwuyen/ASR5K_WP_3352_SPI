@@ -58,6 +58,15 @@
 
 #define ENABLE_TEST_VIN_VOUT      0
 
+typedef struct {
+    uint32_t u32InitCount;
+    uint32_t u32RxByteCount;
+    uint32_t u32TxByteCount;
+    uint32_t u32ValidFrameCount;
+    uint32_t u32RxTimeoutCount;
+    uint16_t u16LastRxByte;
+    uint16_t u16LastTxByte;
+} ST_SCIA_DEBUG_DIAG;
 
 #define ENABLE_CLA_DAC            (ENABLE_TEST_ISR_TASK+ENABLE_TEST_DELAY_ON_OFF+ENABLE_TEST_SLEWRATE)
 #if ENABLE_CLA_DAC
@@ -97,6 +106,7 @@
 #endif
 
 extern void runDebug(void);
+extern volatile ST_SCIA_DEBUG_DIAG g_sciaDebugDiag;
 
 
 #endif /* CDEBUG_H_ */

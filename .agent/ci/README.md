@@ -1,4 +1,4 @@
-# ASR5K Minimum Governance Gate
+﻿# ASR5K Minimum Governance Gate
 
 Run from the repository root:
 

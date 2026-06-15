@@ -1,4 +1,4 @@
-# 環境同步指南 - 讓兩台電腦的 VS Code + Python + PowerShell 環境完全一致
+﻿# 環境同步指南 - 讓兩台電腦的 VS Code + Python + PowerShell 環境完全一致
 
 ## 快速同步 (推薦)
 

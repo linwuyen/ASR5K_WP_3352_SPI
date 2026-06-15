@@ -138,6 +138,40 @@ def check_markdown_links(all_documents: bool) -> None:
     print(f"[PASS] Markdown stale links ({scope}): {len(documents)} file(s)")
 
 
+def parse_markdown_table(file_path: Path) -> dict[str, str]:
+    """
+    Parse Markdown registry rows and return a map:
+    {file_or_pattern: status}
+
+    This parser is intended for DOCUMENT_STATUS_REGISTRY.md.
+    It extracts the first column as file/pattern and the second column as status.
+    """
+    registry_map: dict[str, str] = {}
+
+    if not file_path.exists():
+        return registry_map
+
+    for line in file_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip().startswith("|"):
+            continue
+
+        columns = [col.strip() for col in line.split("|")]
+        if len(columns) < 4:
+            continue
+
+        file_pat = columns[1].replace("`", "").strip()
+        status_val = columns[2].replace("`", "").strip()
+
+        if file_pat in ["File", "File or Pattern", "Status"]:
+            continue
+        if file_pat.startswith("---") or status_val.startswith("---"):
+            continue
+
+        registry_map[file_pat] = status_val
+
+    return registry_map
+
+
 def check_frozen_architecture() -> None:
     decisions = (
         AGENT_ROOT / "00_Project/ASR5K_DECISIONS.md"
@@ -210,6 +244,61 @@ def check_frozen_architecture() -> None:
     for statement in required_m5:
         if statement not in specification:
             raise CheckFailure(f"M5 governance assertion missing: {statement}")
+
+    # Verify ACTIVE_EVIDENCE status definition exists in Document Status Registry raw text
+    registry_text = REGISTRY.read_text(encoding="utf-8")
+    if "| ACTIVE_EVIDENCE |" not in registry_text:
+        raise CheckFailure("ACTIVE_EVIDENCE status definition missing from Document Status Registry.")
+
+    # Parse registry table and verify exact status for M5R_PHASE2_BURST_TRANSPORT.md
+    registry = parse_markdown_table(REGISTRY)
+    m5r_path = ".agent/02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md"
+    if m5r_path not in registry:
+        raise CheckFailure(f"{m5r_path} not found in Document Status Registry.")
+    if registry[m5r_path] != "ACTIVE_EVIDENCE":
+        raise CheckFailure(
+            f"{m5r_path} status must be ACTIVE_EVIDENCE, got {registry[m5r_path]}"
+        )
+
+    # Elastic path detection for Emu_3352_SPI
+    candidate_emu_dirs = [
+        REPO_ROOT / "WP_3352_SPI" / "Emu_3352_SPI",
+        REPO_ROOT / "Emu_3352_SPI",
+    ]
+
+    emu_dir = None
+    for candidate in candidate_emu_dirs:
+        if candidate.exists():
+            emu_dir = candidate
+            break
+
+    if emu_dir is None:
+        print("[WARN] Emu_3352_SPI directory not found. Skipping C source scans.")
+    else:
+        for path in emu_dir.rglob("*"):
+            if not path.is_file():
+                continue
+
+            if path.suffix.lower() not in [".c", ".h", ".cla"]:
+                continue
+
+            if any(part in path.parts for part in ["CPU1_RAM", "CPU1_FLASH", "Debug", "Release"]):
+                continue
+
+            content = path.read_text(encoding="utf-8", errors="ignore")
+
+            obsolete_tokens = [
+                "VALID_STUB",
+                "VALID_TEST",
+                "WAVE_PAGE_STATE_ACTIVE",
+                "WAVE_PAGE_STATE_ERROR",
+            ]
+
+            for token in obsolete_tokens:
+                if token in content:
+                    raise CheckFailure(
+                        f"Obsolete page state token '{token}' found in C source: {path}"
+                    )
 
     print("[PASS] Frozen architecture assertions and M5 state contract")
 

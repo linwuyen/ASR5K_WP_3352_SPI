@@ -1,4 +1,4 @@
-# ASR5K Approved Decisions
+﻿# ASR5K Approved Decisions
 
 ## Status
 

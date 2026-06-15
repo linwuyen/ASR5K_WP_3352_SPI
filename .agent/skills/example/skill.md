@@ -1,4 +1,4 @@
-# Skill: C28x ePWM Configuration
+﻿# Skill: C28x ePWM Configuration
 
 ## 1. When to use (觸發時機)
 - 當任務涉及「初始化 ePWM 模組」、「設定 PWM 頻率/工作週期 (Duty Cycle)」、「生成數位電源控制訊號」或「設定 Action Qualifier (AQ) / Dead-Band (DB)」時，必須立刻觸發此技能。

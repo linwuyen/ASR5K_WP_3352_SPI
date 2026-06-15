@@ -1,4 +1,4 @@
-# D10_WAVE_VALIDATION_POLICY.md
+﻿# D10_WAVE_VALIDATION_POLICY.md
 
 可以，D10 先定義「什麼叫一個 Wave Page 有效」。
 

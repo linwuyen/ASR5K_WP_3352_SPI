@@ -1,4 +1,4 @@
-# IPC 偵錯與測試手冊 (Debug & Testing Manual)
+﻿# IPC 偵錯與測試手冊 (Debug & Testing Manual)
 
 本手冊說明如何使用 `IPC_ctl` 結構體與 `IPC_Test_Engine` 在 CCS Watch Window 中進行即時測試。
 

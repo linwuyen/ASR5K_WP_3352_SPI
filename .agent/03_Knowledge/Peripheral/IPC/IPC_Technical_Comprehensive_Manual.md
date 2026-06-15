@@ -1,4 +1,4 @@
-# IPC (Inter-Processor Communication) 綜合技術手冊
+﻿# IPC (Inter-Processor Communication) 綜合技術手冊
 
 本手冊整合了 F28388x 雙核系統中 IPC 模組的架構設計、硬體同步機制、內存分配佈局及效能審計數據，為開發與維護提供單一事實來源 (Single Source of Truth)。
 

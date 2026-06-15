@@ -1,4 +1,4 @@
-# 設定校準（Setting Calibration）
+﻿# 設定校準（Setting Calibration）
 
 這段對話主要由兩位工程師在探討**硬體晶片（如 ADC、Inverter、LC 濾波器）在進行交流（AC）校準時，其「設定校準（Setting Calibration）」與「公式架構（增益與偏置）」的實務取捨**。
 以下為您將音檔內容進行詳細的條列式重點整理：

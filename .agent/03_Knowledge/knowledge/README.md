@@ -1,4 +1,4 @@
-# ASR5K 知識庫整合索引 (Knowledge Base Index)
+﻿# ASR5K 知識庫整合索引 (Knowledge Base Index)
 
 本目錄存放 ASR5K 專案的核心技術文件、硬體驗證報告與開發指南。所有文件遵循 `[類別]_[名稱].md` 的命名規範。
 

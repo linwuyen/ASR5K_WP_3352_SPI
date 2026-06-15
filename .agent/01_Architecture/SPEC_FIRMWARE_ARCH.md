@@ -1,4 +1,4 @@
-# ASR5K 韌體系統架構深度規格書 (Firmware Architecture Deep Spec)
+﻿# ASR5K 韌體系統架構深度規格書 (Firmware Architecture Deep Spec)
 
 本文件基於 ASR5K_F28384D 專案的底層配置檔（`.cmd`, `pinmux.syscfg`, `timetask.c` 等）進行深度反向工程，記錄系統的實體資源分配、排程器細節與 IPC 握手機制。這不僅是高階架構，更是除錯與底層開發的「實體地圖」。
 

@@ -1,4 +1,4 @@
-# ModbusMaster.py - Python Modbus RTU Master Implementation
+﻿# ModbusMaster.py - Python Modbus RTU Master Implementation
 
 ## 概述 (Overview)
 

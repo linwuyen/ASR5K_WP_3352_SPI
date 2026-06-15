@@ -1,4 +1,4 @@
-# IPC 模組驗證手冊 (Expert Manual - Fully Detailed)
+﻿# IPC 模組驗證手冊 (Expert Manual - Fully Detailed)
 
 本手冊指導您如何在 TI CCS 環境下，透過 Watch Window 進行深度的通訊驗證與壓力測試。
 

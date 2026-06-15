@@ -1,4 +1,4 @@
----
+﻿---
 Category: Hardware & Peripherals
 Status: Verified
 Last Updated: 2026-05-11

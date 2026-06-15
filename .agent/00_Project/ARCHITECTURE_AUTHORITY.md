@@ -10,18 +10,16 @@ milestones, and implementation work.
 
 | Tier | Authority |
 |---|---|
-| Tier 1 | Formal Product Documents |
-| Tier 2 | D01 |
-| Tier 3 | D02 |
-| Tier 4 | D03 |
-| Tier 5 | D04 |
-| Tier 6 | D05 |
-| Tier 7 | D07 |
-| Tier 8 | D10 |
-| Tier 9 | Approved Decisions |
-| Tier 10 | Approved Conflict Register |
-| Tier 11 | Milestone Evidence |
-| Tier 12 | Research / Candidate Documents |
+| Tier 0 | Boot / Registry / Authority Meta Rules (`AGENT_ENTRYPOINT.md`, `DOCUMENT_STATUS_REGISTRY.md`, `ARCHITECTURE_AUTHORITY.md`) |
+| Tier 1 | Approved Decisions (`ASR5K_DECISIONS.md`) |
+| Tier 2 | Approved Conflict Register (`ARCHITECTURE_CONFLICT_REGISTER.md`) |
+| Tier 3 | ACTIVE SPEC (`SPEC_FIRMWARE_ARCH.md`, `SPEC_M5_WAVE_DOWNLOAD.md`, D07, D10) |
+| Tier 4 | ACTIVE_EVIDENCE (`M5R_PHASE2_BURST_TRANSPORT.md`) |
+| Tier 5 | Project State / Handoff (`ASR5K_STATUS.md`, `ASR5K_HANDOFF.md`) |
+| Tier 6 | REFERENCE_ONLY (peripherals, DMA/IPC manuals, test SOPs) |
+| Tier 7 | HISTORICAL (completed milestone evidence logs) |
+| Tier 8 | SUPERSEDED (obsolete D-series, formal PDFs, workflows) |
+
 
 The D-series names refer to the controlled documents under
 `.agent/01_Architecture/ASR5K設計文件/`. D02 includes its controlled companion
@@ -38,10 +36,8 @@ documents, such as D02_2_1 and D02_2_3.
 4. When documents at the same tier disagree, do not guess. Use an approved
    decision or conflict-register entry. If none exists, report the ambiguity
    and stop architecture-changing work.
-5. Milestones provide implementation evidence only. They cannot create or
-   change architecture.
-6. Research, proposals, experiments, and candidate documents provide context
-   only. They cannot create or change production architecture.
+5. Milestone evidence (`ACTIVE_EVIDENCE` or `HISTORICAL`) provides implementation evidence only. `ACTIVE_EVIDENCE` may validate an implementation but must not define or override architecture. Milestone PASS does not imply D10 checksum compliance is closed. Checksum verification remains a distinct production requirement.
+6. Research, proposals, experiments, and candidate documents (`REFERENCE_ONLY`) provide context only. They cannot create or change production architecture.
 7. Rules and workflows constrain agent behavior and procedure. They are not
    architecture sources.
 

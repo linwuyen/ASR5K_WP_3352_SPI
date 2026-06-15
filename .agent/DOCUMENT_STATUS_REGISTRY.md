@@ -5,13 +5,14 @@
 | Status | Meaning |
 |---|---|
 | ACTIVE | Current and usable within its authority and stated scope. |
+| ACTIVE_EVIDENCE | Statically or physically verified milestone evidence such as watch lists, observed counters, validation logs, or regression baselines. It may validate an implementation but must not define or override architecture. |
 | SUPERSEDED | Contains obsolete or conflicting claims. Only content explicitly preserved by an approved decision or conflict resolution may be used. |
 | HISTORICAL | Retained as evidence of past work, results, or abandoned direction. |
 | REFERENCE_ONLY | Useful context or candidate material, but not production architecture authority. |
+| UNKNOWN / NEEDS_HUMAN_CONFIRMATION | Requires human review or is a candidate awaiting definition. |
 
-Status does not replace the authority hierarchy. An ACTIVE lower-tier document
-still cannot override a higher-tier source. Directory-group entries cover every
-file below that directory unless a more specific entry assigns another status.
+Status does not replace the authority hierarchy. Milestone evidence (`ACTIVE_EVIDENCE`) must not override ACTIVE specifications, approved conflict resolutions, or approved decisions. An ACTIVE lower-tier document still cannot override a higher-tier source. Directory-group entries cover every file below that directory unless a more specific entry assigns another status.
+
 
 ## Governance and Project Documents
 
@@ -26,9 +27,11 @@ file below that directory unless a more specific entry assigns another status.
 | `.agent/00_Project/ASR5K_HANDOFF.md` | ACTIVE | Current M5A Wave Download/Test9 handoff. |
 | `.agent/00_Project/ASR5K_STATUS.md` | ACTIVE | Current governance and milestone status. |
 | `.agent/00_Project/M5_GOVERNANCE_REPAIR_REPORT.md` | ACTIVE | Current governance-repair evidence and gate report; not architecture authority. |
+| `.agent/00_Project/PROJECT_AUDIT.md` | HISTORICAL | Project configuration audit report. |
 | `.agent/00_Project/M3_HANDOFF_PROMPT.md` | HISTORICAL | M3-era handoff evidence only. |
 
 ## Architecture Documents
+
 
 | File or Pattern | Status | Governing Note |
 |---|---|---|
@@ -48,7 +51,10 @@ file below that directory unless a more specific entry assigns another status.
 | `.agent/01_Architecture/cpu1_research_plan.md` | REFERENCE_ONLY | CPU1 research plan; not current project status or production authority. |
 | `.agent/01_Architecture/cpu2_research_plan.md` | REFERENCE_ONLY | CPU2 research plan; not current project status or production authority. |
 | `.agent/01_Architecture/ASR5K設計文件/R*.md` | REFERENCE_ONLY | R-series research documents. |
-| `.agent/01_Architecture/ASR5K設計文件/[音檔說明]*.md` | REFERENCE_ONLY | Audio-derived explanatory notes. |
+| `.agent/01_Architecture/ASR5K設計文件/[音檔說明]DDS控制與保護系統架構整理 345f92a6410e804cbbdcc057cf5285b4.md` | REFERENCE_ONLY | Audio-derived explanatory notes. |
+| `.agent/01_Architecture/ASR5K設計文件/[音檔說明]SPI FIFO、DMA 傳輸（DRAM Flash）的架構 373f92a6410e80a0bcc3cb7f9ec8f811.md` | REFERENCE_ONLY | Audio-derived explanatory notes. |
+| `.agent/01_Architecture/ASR5K設計文件/[音檔說明]關於 SPI RX（接收端）封包格式與 DMA 機制技術說明 375f92a6410e808aa780e84e7dc3c852.md` | REFERENCE_ONLY | Audio-derived explanatory notes. |
+| `.agent/01_Architecture/ASR5K設計文件/[音檔說明]關於 TX（傳送端）採用 Ping-Pong Buffer 進行 Block 傳輸的技術 375f92a6410e80f49c74e49c8a338c51.md` | REFERENCE_ONLY | Audio-derived explanatory notes. |
 | `.agent/01_Architecture/ASR5K設計文件/ASR5K_M0_COMM*.md` | REFERENCE_ONLY | M0 communication reference material. |
 | `.agent/01_Architecture/ASR5K設計文件/M0_README*.md` | REFERENCE_ONLY | M0 reference overview. |
 | `.agent/01_Architecture/ASR5K設計文件/剖析硬體非線性誤差來源與校準補償策略說明*.md` | REFERENCE_ONLY | Calibration research note. |
@@ -82,9 +88,13 @@ file below that directory unless a more specific entry assigns another status.
 | `.agent/02_Milestones/M5_WAVE_DOWNLOAD_PLAN.md` | SUPERSEDED | Preparation plan does not represent the current unresolved M5A receive direction. |
 | `.agent/02_Milestones/M5_LEGACY_COMMAND_TO_DDS_INTEGRATION.md` | SUPERSEDED | Direct DDS execution assumptions conflict with frozen CPU ownership. |
 | `.agent/02_Milestones/M5R_PORTABILITY_REVIEW.md` | HISTORICAL | M5A-era portability snapshot and review evidence. |
-| `.agent/02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md` | ACTIVE | Hardware-verified M5R Phase 2 transport evidence and regression watch list; does not create architecture. |
+| `.agent/02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md` | ACTIVE_EVIDENCE | Hardware-verified M5R Phase 2 transport evidence and regression watch list; does not create architecture. |
+| `.agent/02_Milestones/M5A_TEST_CHECKLIST.md` | HISTORICAL | M5A milestone test checklist. |
+| `.agent/02_Milestones/M5_WAVE_SDRAM_TRANSPORT_CLOSURE_PLAN.md` | HISTORICAL | M5 wave SDRAM transport closure plan. |
+| `.agent/02_Milestones/SPIB_D02_CONFORMANCE_REPORT.md` | HISTORICAL | SPIB D02 interface conformance report. |
 
 ## Knowledge and Operational Material
+
 
 | File or Pattern | Status | Governing Note |
 |---|---|---|

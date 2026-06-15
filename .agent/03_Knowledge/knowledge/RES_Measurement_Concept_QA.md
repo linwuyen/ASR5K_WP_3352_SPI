@@ -1,4 +1,4 @@
----
+﻿---
 Category: Research & Concepts
 Status: Verified
 Related Files: [RES_Legacy_28377_Logic.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/.agent/specs/knowledge/RES_Legacy_28377_Logic.md)

@@ -1,4 +1,4 @@
-# 通用通訊診斷模組 (Generic Communication Diagnostics)
+﻿# 通用通訊診斷模組 (Generic Communication Diagnostics)
 
 此診斷模組是一個通用、輕量且高移植性的 C 語言通訊診斷框架。它適用於各種嵌入式通訊協定（如 SPI, CAN, I2C, UART 等），專門用來鎖定通訊崩潰時的**「第一筆錯誤現場」**。
 

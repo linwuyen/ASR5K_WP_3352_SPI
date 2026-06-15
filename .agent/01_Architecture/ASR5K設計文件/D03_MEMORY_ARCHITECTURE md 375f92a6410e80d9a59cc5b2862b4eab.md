@@ -1,4 +1,4 @@
-# D03_MEMORY_ARCHITECTURE.md
+﻿# D03_MEMORY_ARCHITECTURE.md
 
 ## 1. Purpose
 

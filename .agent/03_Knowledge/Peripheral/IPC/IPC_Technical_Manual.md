@@ -1,4 +1,4 @@
-# IPC 技術手冊與效能報告 (Technical Manual & Performance Audit)
+﻿# IPC 技術手冊與效能報告 (Technical Manual & Performance Audit)
 
 本手冊整合了 F28388D IPC 模組的實作架構詳解與針對 100kHz 控制頻率的效能審計數據，為系統開發與維護提供完整索引。
 

@@ -1,4 +1,4 @@
-# M5A Wave Download Hardware Validation Checklist
+﻿# M5A Wave Download Hardware Validation Checklist
 
 > Historical M5A checklist. The current verified transport contract and watch
 > list are maintained in

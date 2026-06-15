@@ -1,4 +1,4 @@
----
+﻿---
 name: specify
 description: "[SDD 階段一] 需求與規格定義。與工程師討論系統需求，並使用 EARS 語法產出標準化 spec.md，嚴禁生成任何程式碼。"
 ---

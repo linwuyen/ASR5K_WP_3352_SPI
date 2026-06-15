@@ -1,4 +1,4 @@
-# IPC (Inter-Processor Communication) 模組功能說明文件
+﻿# IPC (Inter-Processor Communication) 模組功能說明文件
 
 本文件詳細說明 F28388x 雙核系統中，CPU1 與 CPU2 之間高效能通訊模組的開發成果。該模組旨在實現低延遲、非阻塞且具備高度診斷能力的數據交換。
 

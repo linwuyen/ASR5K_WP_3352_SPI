@@ -1,4 +1,4 @@
-# ASR5K Control Card - Phase 1: Manual Physical Audit
+﻿# ASR5K Control Card - Phase 1: Manual Physical Audit
 
 本文件定義 ASR5K Control Card 的手動物理量測項目，確保在進入複雜韌體驗證前，硬體電力與訊號基礎 100% 正確。
 

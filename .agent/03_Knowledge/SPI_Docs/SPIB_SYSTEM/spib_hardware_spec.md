@@ -1,4 +1,4 @@
-# ASR5K SPIB 週邊硬體配置與接口規格說明書 (spib_hardware_spec.md)
+﻿# ASR5K SPIB 週邊硬體配置與接口規格說明書 (spib_hardware_spec.md)
 
 本文件概述了 ASR5K 逆變器控制板上 C2000 與 AM3352 主控晶片間的 **SPIB 實體層配置**、引腳多工、阻抗匹配電阻及暫存器工作屬性。本文件為硬體對接與底層驅動運作的單一真相來源 (SSOT)。
 

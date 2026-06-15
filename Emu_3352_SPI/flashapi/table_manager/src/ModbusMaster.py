@@ -20,7 +20,7 @@ from pymodbus.client import ModbusSerialClient
 from pymodbus.framer import FramerType
 
 class ModbusMaster:
-    def __init__(self, port, baudrate=115200, timeout=0.1):
+    def __init__(self, port, baudrate=115200, timeout=1.0):
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
@@ -64,7 +64,7 @@ class ModbusMaster:
             response = self.client.read_holding_registers(
                 address=start_address,
                 count=quantity,
-                device_id=slave_id
+                slave=slave_id
             )
             if response.isError():
                 print(f"Modbus error: {response}")
@@ -80,7 +80,7 @@ class ModbusMaster:
             response = self.client.write_register(
                 address=address,
                 value=value,
-                device_id=slave_id
+                slave=slave_id
             )
             if response.isError():
                 print(f"Modbus error: {response}")
@@ -100,7 +100,7 @@ class ModbusMaster:
             response = self.client.write_registers(
                 address=start_address,
                 values=values,
-                device_id=slave_id
+                slave=slave_id
             )
             if response.isError():
                 print(f"Modbus error: {response}")
@@ -114,6 +114,7 @@ def main():
     parser = argparse.ArgumentParser(description='Modbus Master for PC COM port using pymodbus')
     parser.add_argument('--port', required=True, help='COM port (e.g., COM1)')
     parser.add_argument('--baudrate', type=int, default=9600, help='Baud rate (default: 9600)')
+    parser.add_argument('--timeout', type=float, default=1.0, help='Response timeout in seconds (default: 1.0)')
     parser.add_argument('--slave', type=int, required=True, help='Slave ID')
     parser.add_argument('--function', type=int, required=True,
                        choices=[3, 6, 16], help='Function code: 3=Read Holding, 6=Write Single, 16=Write Multiple')
@@ -135,7 +136,7 @@ def main():
         print("Values required for multiple write operation")
         sys.exit(1)
 
-    master = ModbusMaster(args.port, args.baudrate)
+    master = ModbusMaster(args.port, args.baudrate, args.timeout)
 
     if not master.connect():
         sys.exit(1)

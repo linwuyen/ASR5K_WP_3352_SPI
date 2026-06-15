@@ -1,4 +1,4 @@
-# [音檔說明]關於 TX（傳送端）採用 Ping-Pong Buffer 進行 Block 傳輸的技術說明
+﻿# [音檔說明]關於 TX（傳送端）採用 Ping-Pong Buffer 進行 Block 傳輸的技術說明
 
 ### 1. 為什麼 TX 需要 Ping-Pong Buffer？
 

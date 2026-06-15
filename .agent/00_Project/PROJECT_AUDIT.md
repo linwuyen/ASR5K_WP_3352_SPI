@@ -1,4 +1,4 @@
-# ASR5K Project Audit Report (WP_3352_SPI)
+﻿# ASR5K Project Audit Report (WP_3352_SPI)
 
 This audit evaluates the structure, consistency, and link integrity of the newly established `.agent` directory layout.
 

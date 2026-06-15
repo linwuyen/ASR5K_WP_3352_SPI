@@ -1,4 +1,4 @@
-# [音檔說明]SPI FIFO、DMA 傳輸（DRAM/Flash）的架構
+﻿# [音檔說明]SPI FIFO、DMA 傳輸（DRAM/Flash）的架構
 
 這段音訊主要探討了在**高速連續資料傳輸**中，如何透過 **SPI FIFO、DMA 傳輸與多級緩衝區（DRAM/Flash）**的架構優化，來避免資料發生遺失（Loss）的硬體設計與計算邏輯。
 以下為您詳細整理音檔內容與核心量化計算：

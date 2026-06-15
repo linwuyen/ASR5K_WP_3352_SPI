@@ -1,4 +1,4 @@
-# ModbusMaster.py
+﻿# ModbusMaster.py
 
 A Python-based Modbus Master implementation for communicating with Modbus slaves via PC COM port.
 

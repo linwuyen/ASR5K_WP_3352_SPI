@@ -22,6 +22,7 @@ int16_t cntModbusTimeout(SCI_MODBUS *mbus)
         if (mbus->timeout >= MBUS_TIMEOUT)
         {
             mbus->timestamp = mbus->timetick;
+            g_sciaDebugDiag.u32RxTimeoutCount++;
             return -1;
         }
         return 1;
@@ -69,6 +70,9 @@ int16_t getMbusRxFIFO(SCI_MODBUS *mbus)
         uint16_t u16PortIdle = (mbus->sFiFo.pushRcnts == 0U) ? 1U : 0U;
         uint16_t u16Temp = (mbus->rdfunc(mbus->sci) & 0x00FF);
 
+        g_sciaDebugDiag.u32RxByteCount++;
+        g_sciaDebugDiag.u16LastRxByte = u16Temp;
+
         if (Asr5kSpiSelfTest_UartRxByte(u16Temp, u16PortIdle) != 0U)
         {
             return 0;
@@ -98,6 +102,7 @@ int16_t getMbusRxFIFO(SCI_MODBUS *mbus)
 
     if ((0 == mbus->crc) && (3 < mbus->sFiFo.pushRcnts))
     {
+        g_sciaDebugDiag.u32ValidFrameCount++;
         return mbus->sFiFo.pushRcnts;
     }
     else
@@ -127,6 +132,8 @@ int16_t setMbusTxData(SCI_MODBUS *mbus)
             uint16_t u16Temp = mbus->sFiFo.u16RAM[mbus->sFiFo.popTcnts];
             mbus->sFiFo.popTcnts++;
             mbus->wrfunc(mbus->sci, u16Temp);
+            g_sciaDebugDiag.u32TxByteCount++;
+            g_sciaDebugDiag.u16LastTxByte = u16Temp;
         }
     }
     else if (sAccessCPU1.popTcnts != sReadCPU2.pushTcnts)
@@ -135,6 +142,8 @@ int16_t setMbusTxData(SCI_MODBUS *mbus)
         {
             uint16_t u16Temp = sReadCPU2.u16TxRAM[sAccessCPU1.popTcnts];
             mbus->wrfunc(mbus->sci, u16Temp);
+            g_sciaDebugDiag.u32TxByteCount++;
+            g_sciaDebugDiag.u16LastTxByte = u16Temp;
             sAccessCPU1.popTcnts++;
             if (MBUS_SHARERAM_SIZE == sAccessCPU1.popTcnts)
                 sAccessCPU1.popTcnts = 0;

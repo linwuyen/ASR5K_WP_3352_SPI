@@ -1,4 +1,4 @@
-# DMA CH5 註解原因分析 (2026-04-22)
+﻿# DMA CH5 註解原因分析 (2026-04-22)
 
 ## 1. 現狀描述
 在 `dma_chain.c` 中，負責「收割 (Harvesting)」數據的 CH5 通道被註解掉，且觸發源設定為 `DMA_TRIGGER_EPWM6SOCB`。

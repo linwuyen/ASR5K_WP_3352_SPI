@@ -1,4 +1,4 @@
-# M5_LEGACY_COMMAND_TO_DDS_INTEGRATION Architecture Contract
+﻿# M5_LEGACY_COMMAND_TO_DDS_INTEGRATION Architecture Contract
 
 版本: 1.0  
 類型: Tier 3 (Milestone Spec & Verification Contract)  

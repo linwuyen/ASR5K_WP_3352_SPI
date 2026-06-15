@@ -1,4 +1,4 @@
----
+﻿---
 name: implement
 description: "[SDD 階段三] 程式碼實作、沙盒預覽與自動化驗證。依據 design.md 嚴格生成代碼於 Artifacts，強制觸發安全自檢腳本，經人工核准後方可寫入實體專案檔案。"
 ---

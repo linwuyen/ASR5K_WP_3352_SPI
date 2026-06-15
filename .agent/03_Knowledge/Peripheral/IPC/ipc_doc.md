@@ -1,4 +1,4 @@
-The Interprocessor Communications (IPC) module allows communication between the two CPU subsystems.
+﻿The Interprocessor Communications (IPC) module allows communication between the two CPU subsystems.
 7.1 Introduction...............................................................................................................................................................917
 7.2 Message RAMs......................................................................................................................................................... 918
 7.3 IPC Flags and Interrupts..........................................................................................................................................918

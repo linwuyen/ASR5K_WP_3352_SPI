@@ -1,4 +1,4 @@
-# M5_WAVE_DOWNLOAD_PLAN
+﻿# M5_WAVE_DOWNLOAD_PLAN
 
 ## 1. Purpose
 This is a preparation document outlining the wave download data path, architecture rules, and boundaries for Milestone 5. No source implementation is performed under this milestone phase.

@@ -1,4 +1,4 @@
-**【系統環境與開發目標】**
+﻿**【系統環境與開發目標】**
 *   **MCU 平台**：TI C2000 系列 (TMS320F2838x) - CPU2。
 *   **時脈參數**：SYSCLK = 200 MHz, LSPCLK = 50 MHz。
 *   **開發目標**：在**尚無**真實 FSI 模組以及外部 ADC/DAC 硬體的過渡階段，使用 **McBSP-A 模擬標準 4-Wire SPI Master** (Clock Stop Mode)，並建立一條完全零 CPU 負擔 (0% Overhead) 的「全自動 DMA 收發管線」，以 100kHz 的控制週期進行回圈測試。

@@ -1,4 +1,4 @@
-# F28388D 雙核通訊記憶體分配詳解 (Memory Layout)
+﻿# F28388D 雙核通訊記憶體分配詳解 (Memory Layout)
 
 雙核通訊內存被嚴格劃分為 **控制平面 (MSGRAM)** 與 **數據平面 (GSRAM)**。
 

@@ -1,4 +1,4 @@
-# RxFrame Ping/Pong Buffer Architecture & Design Contract
+﻿# RxFrame Ping/Pong Buffer Architecture & Design Contract
 
 This document defines the formal architecture contract for the `M2R_RXFRAME_PINGPONG` milestone. It outlines the legacy frame data structure, buffer state machines, simulated DMA/Parser interface, and memory mapping rules.
 

@@ -1,4 +1,4 @@
-# Table Manager Project
+﻿# Table Manager Project
 
 這個專案提供工具來管理黑盒表（BBox Table）的匯入和匯出操作，支援透過JSON格式更新C語言的TABLE表，並通過Modbus與DSP進行數據通訊。
 

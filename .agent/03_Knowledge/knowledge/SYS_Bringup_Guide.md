@@ -1,4 +1,4 @@
----
+﻿---
 Category: System & Architecture
 Status: Verified
 Related Files: [README.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/.agent/specs/knowledge/README.md)

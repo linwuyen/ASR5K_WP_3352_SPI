@@ -17,6 +17,7 @@
 // ============================================================================
 #define WAIT_SLAVE_TICKS 0U
 #define WAIT_IDLE_TICKS  1000U    // 20us inter-packet guard band under 50MHz SW_TIMER
+#define WAVE_POST_PROCESS_TICKS T_1MS
 #define SPI_TIMEOUT_LIMIT 250000U // 5ms anti-deadlock timeout threshold
 #define SPI_RAW_FRAME_STRESS_ADDR Output_ON_OFF_spi_addr
 
@@ -682,7 +683,12 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
     }
 
     if (pstInst->stBlockTx.u16RxIndex == pstInst->stBlockTx.u16Length) {
-      pstInst->u32IdleLimitTicks = WAIT_IDLE_TICKS;
+      /* Wave samples are parsed by SPIB in bounded background chunks.
+       * Do not start WAVE_DOWNLOAD_COMPLETE until that deferred work and
+       * post-wave DMA handoff have finished. */
+      pstInst->u32IdleLimitTicks =
+          (pstInst->stBlockTx.u16WaveMode == 2U) ?
+          WAVE_POST_PROCESS_TICKS : WAIT_IDLE_TICKS;
       pstInst->eState = SPI_CMD_WAIT_IDLE;
       if (pstInst->stBlockTx.pfCallback != 0) {
         pstInst->stBlockTx.pfCallback();

@@ -1,4 +1,4 @@
-# M5 Governance Repair Report
+﻿# M5 Governance Repair Report
 
 Status: PASS WITH OPEN PRODUCTION GATES
 Date: 2026-06-14

@@ -1,4 +1,4 @@
-# Control Card Hardware Bring-up Specification (SDD)
+﻿# Control Card Hardware Bring-up Specification (SDD)
 
 本文件定義新製作 PCB Control Card (TI C2000 系列) 的標準檢查與驗證流程。所有新硬體必須通過此程序方可進入應用層韌體開發。
 

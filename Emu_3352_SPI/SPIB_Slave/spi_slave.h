@@ -217,6 +217,12 @@ extern volatile uint32_t gSpibRxParseFailCount;
 extern volatile uint32_t gSpibRxDmaRestartCount;
 extern volatile uint16_t gSpibRxErrorFlags;
 extern volatile uint16_t gSpibFwBuildTag;
+extern volatile uint16_t g_u16WaveRawParsePending;
+/* B01D diagnostic mirrors of the RX-path statics, sampled every poll, so the
+ * self-test gate can confirm the slave is out of wave mode with its RegFrame
+ * DMA armed before the master issues the next command. */
+extern volatile uint16_t g_u16DiagInWave;
+extern volatile uint16_t g_u16DiagDmaArmed;
 extern volatile uint16_t OUTPUT_ON;
 extern volatile uint32_t g_u32DebugLastTx;
 extern bool SPIB_RxDmaIsDone(void);

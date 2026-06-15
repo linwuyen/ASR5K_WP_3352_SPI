@@ -9,9 +9,6 @@
 #ifndef WAVE_PAGE_SELECT_ADDR
 #define WAVE_PAGE_SELECT_ADDR       0x0958
 #endif
-#ifndef WAVE_DOWNLOAD_CTRL_ADDR
-#define WAVE_DOWNLOAD_CTRL_ADDR     0x0959
-#endif
 #ifndef WAVE_PAGE_STATUS_ADDR
 #define WAVE_PAGE_STATUS_ADDR       0x095A
 #endif
@@ -20,6 +17,13 @@
 #endif
 #ifndef WAVE_ACTIVATE_ADDR
 #define WAVE_ACTIVATE_ADDR          0x0961
+#endif
+#ifndef WAVE_STATUS_REG_READY
+#define WAVE_STATUS_REG_READY       0x0001U
+#define WAVE_STATUS_RX_DONE         0x0002U
+#define WAVE_STATUS_ERROR           0x0004U
+#define WAVE_STATUS_READY_MASK      \
+    (WAVE_STATUS_REG_READY | WAVE_STATUS_RX_DONE)
 #endif
 
 #define WAVE_DATA_WINDOW_BASE       0x3000U
@@ -73,11 +77,13 @@ typedef struct {
     uint16_t u16SelectedPage;                   /* Selected Page Index (0-255 or 0xFFFF) */
     uint16_t u16ActivePage;                     /* Currently active page index used by DDS */
     uint16_t u16LastValidateError;              /* Last WaveDownload_ValidatePage error (WAVE_VALIDATE_ERR_*) */
+    uint16_t u16ExpectedLength;                 /* Samples expected for the active burst */
+    uint16_t u16Status;                         /* WAVE_STATUS_* register flags */
     uint16_t u16PageState[WAVE_MAX_PAGES];      /* State of each of the 256 pages */
     uint16_t u16SampleCount[WAVE_MAX_PAGES];    /* Number of samples received for each page */
     uint16_t u16LastAddress[WAVE_MAX_PAGES];    /* Last sample address received for continuity check */
     bool     bAddressContinuous[WAVE_MAX_PAGES]; /* Whether address sequence has been continuous */
-    bool     bDownloadComplete[WAVE_MAX_PAGES]; /* Whether complete command has been received */
+    bool     bDownloadComplete[WAVE_MAX_PAGES]; /* Whether the expected burst completed */
     uint32_t u32PageChecksum[WAVE_FAKE_SDRAM_PAGES]; /* M5 sandbox per-page storage-consistency checksum (fake SDRAM pages 0..2 only) */
     ST_WAVE_DOWNLOAD_DIAG stDiag;               /* Diagnostic counters */
 } ST_WAVE_DOWNLOAD;
@@ -105,9 +111,24 @@ uint16_t WaveDownload_WriteSample(uint16_t u16Offset, uint16_t u16Sample);
 uint16_t WaveDownload_ReadSample(uint16_t u16PageId, uint16_t u16Offset);
 
 /**
- * @brief Complete download process for selected page.
+ * @brief Start a burst download and reset the selected page metadata.
  */
-uint16_t WaveDownload_CompleteDownload(uint16_t u16Data);
+uint16_t WaveDownload_BeginBurst(uint16_t u16ExpectedLength);
+
+/**
+ * @brief Finalize a burst after all DMA and deferred parsing has completed.
+ */
+uint16_t WaveDownload_FinalizeBurst(bool bTransportOk);
+
+/**
+ * @brief Mark normal register DMA ready for status/control transactions.
+ */
+void WaveDownload_SetRegReady(void);
+
+/**
+ * @brief Return the WAVE_STATUS_* bitfield exposed by 0x095A.
+ */
+uint16_t WaveDownload_GetStatus(void);
 
 /**
  * @brief Validate selected page.

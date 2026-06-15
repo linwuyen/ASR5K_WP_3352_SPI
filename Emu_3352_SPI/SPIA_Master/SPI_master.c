@@ -38,6 +38,16 @@ static u16 s_u16SineTableChecksum;
 #pragma DATA_SECTION(g_u16SpiMasterWaveRam, "spia_master_wave_ram")
 volatile u16 g_u16SpiMasterWaveRam[SPI_SINE_TABLE_SIZE];
 
+/* B01D master-side timing and gate diagnostics. */
+volatile u32 g_u32DiagMasterBurstDoneTick;
+volatile u32 g_u32DiagMasterSend0959Tick;
+volatile u32 g_u32DiagMasterWaitAckStartTick;
+volatile u32 g_u32DiagMasterWaitAckFailTick;
+volatile u16 g_u16DiagMasterLastTxCmd;
+volatile u16 g_u16DiagMasterLastTxData;
+volatile u16 g_u16DiagMasterStepAt0959;
+volatile u16 g_u16DiagMasterGateSeen;
+
 ST_SPI_MASTER_CONTROL spiA_master = {
   .pastStressTxBuf = s_astStressTxBuf,
   .pastStressRxBuf = s_astStressRxBuf,
@@ -484,17 +494,33 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
   switch (pstInst->eState) {
   case SPI_CMD_IDLE:
     if (dequeueTx(pstInst, &pstInst->stActiveTx) == 1U) {
+      u16 u16TxCmd =
+          pstInst->stActiveTx.stTxPacket.stPack.u16Address;
+      u16 u16TxData =
+          pstInst->stActiveTx.stTxPacket.stPack.u16Data;
+
       pstInst->u32TimeoutCnt = 0U;
       SPI_resetRxFIFO(pstInst->u32SpiBaseAddr);
 
       // Log TX Metric in Driver comm_diag
       spiA_master.stDiag.stDriver.stComm.u32TxTotal++;
 
+      if ((u16TxCmd == WAVE_DOWNLOAD_CTRL_ADDR) &&
+          (u16TxData == 1U)) {
+        g_u32DiagMasterSend0959Tick = U32_UPCNTS;
+        g_u16DiagMasterLastTxCmd = u16TxCmd;
+        g_u16DiagMasterLastTxData = u16TxData;
+      }
+
       writeSpiMasterFrame(pstInst->u32SpiBaseAddr,
-                          pstInst->stActiveTx.stTxPacket.stPack.u16Address,
-                          pstInst->stActiveTx.stTxPacket.stPack.u16Data);
+                          u16TxCmd,
+                          u16TxData);
 
       pstInst->eState = SPI_CMD_WAIT_ACK;
+      if ((u16TxCmd == WAVE_DOWNLOAD_CTRL_ADDR) &&
+          (u16TxData == 1U)) {
+        g_u32DiagMasterWaitAckStartTick = U32_UPCNTS;
+      }
     }
     break;
 
@@ -511,6 +537,10 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
       pstInst->u32TimeoutCnt++;
       if (pstInst->u32TimeoutCnt > SPI_TIMEOUT_LIMIT) {
         s_stSpiApp.u32StressFailCnt++;
+        if (pstInst->stActiveTx.stTxPacket.stPack.u16Address ==
+            WAVE_DOWNLOAD_CTRL_ADDR) {
+          g_u32DiagMasterWaitAckFailTick = U32_UPCNTS;
+        }
         reportMasterError(SPIA_FAULT_SOURCE_DRIVER, (u16)SPIA_DRV_FAULT_ACK_TIMEOUT);
         recoverSpiMaster(pstInst);
       }
@@ -551,6 +581,10 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
       pstInst->u32TimeoutCnt++;
       if (pstInst->u32TimeoutCnt > SPI_TIMEOUT_LIMIT) {
         s_stSpiApp.u32StressFailCnt++;
+        if (pstInst->stActiveTx.stTxPacket.stPack.u16Address ==
+            WAVE_DOWNLOAD_CTRL_ADDR) {
+          g_u32DiagMasterWaitAckFailTick = U32_UPCNTS;
+        }
         reportMasterError(SPIA_FAULT_SOURCE_DRIVER, (u16)SPIA_DRV_FAULT_DATA_TIMEOUT);
         recoverSpiMaster(pstInst);
       }
@@ -683,6 +717,10 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
     }
 
     if (pstInst->stBlockTx.u16RxIndex == pstInst->stBlockTx.u16Length) {
+      if (pstInst->stBlockTx.u16WaveMode == 2U) {
+        g_u32DiagMasterBurstDoneTick = U32_UPCNTS;
+      }
+
       /* Wave samples are parsed by SPIB in bounded background chunks.
        * Do not start WAVE_DOWNLOAD_COMPLETE until that deferred work and
        * post-wave DMA handoff have finished. */
@@ -1178,6 +1216,9 @@ static void onManualWriteComplete(u16 u16RxAddr, u16 u16RxData) {
     s_stSpiApp.u32StressFailCnt++;
     s_stSpiApp.eTestState = SPI_MASTER_TEST_ERROR;
     s_stSpiApp.u16LastResult = u16RxData;
+    if (s_stSpiApp.u16TestAddr == WAVE_DOWNLOAD_CTRL_ADDR) {
+      g_u32DiagMasterWaitAckFailTick = U32_UPCNTS;
+    }
     reportMasterError(SPIA_FAULT_SOURCE_PROTOCOL, (u16)SPIA_PROT_FAULT_CHECKSUM);
     recoverSpiMaster(&s_stSpiMaster);
   }

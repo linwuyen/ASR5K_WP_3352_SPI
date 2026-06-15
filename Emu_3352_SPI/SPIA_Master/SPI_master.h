@@ -38,6 +38,14 @@ typedef float    f32;
 #define SPI_PACKET_HEADER_MAGIC 0xA55AU
 #define SPI_PACKET_PADDING_WORD 0x0000U
 
+/* B01D post-burst gate snapshot bits. */
+#define SPIA_DIAG_GATE_PENDING_CLEAR  0x0001U
+#define SPIA_DIAG_GATE_OUT_OF_WAVE    0x0002U
+#define SPIA_DIAG_GATE_DMA_ARMED      0x0004U
+#define SPIA_DIAG_GATE_GUARD_ELAPSED  0x0008U
+#define SPIA_DIAG_GATE_READY_MASK     0x0007U
+#define SPIA_DIAG_GATE_SEND_MASK      0x000FU
+
 typedef enum {
   SPI_CMD_IDLE = 0,
   SPI_CMD_WAIT_ACK,
@@ -319,6 +327,14 @@ typedef struct {
 
 extern ST_SPI_MASTER_CONTROL spiA_master;
 extern volatile u16 g_u16SpiMasterWaveRam[SPI_SINE_TABLE_SIZE];
+extern volatile u32 g_u32DiagMasterBurstDoneTick;
+extern volatile u32 g_u32DiagMasterSend0959Tick;
+extern volatile u32 g_u32DiagMasterWaitAckStartTick;
+extern volatile u32 g_u32DiagMasterWaitAckFailTick;
+extern volatile u16 g_u16DiagMasterLastTxCmd;
+extern volatile u16 g_u16DiagMasterLastTxData;
+extern volatile u16 g_u16DiagMasterStepAt0959;
+extern volatile u16 g_u16DiagMasterGateSeen;
 
 // ============================================================================
 // Fixed SPIA Wrapper APIs

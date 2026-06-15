@@ -268,11 +268,15 @@
 #define n_V_Peak_Trip_Set_LSB_spi_addr              0x0940
 
 #define WAVE_PAGE_SELECT_ADDR                       0x0958
-#define WAVE_DOWNLOAD_CTRL_ADDR                     0x0959
 #define WAVE_PAGE_STATUS_ADDR                       0x095A
 #define WAVE_BURST_BEGIN_ADDR                       0x095B
 #define WAVE_VALIDATE_ADDR                          0x0960
 #define WAVE_ACTIVATE_ADDR                          0x0961
+#define WAVE_STATUS_REG_READY                       0x0001U
+#define WAVE_STATUS_RX_DONE                         0x0002U
+#define WAVE_STATUS_ERROR                           0x0004U
+#define WAVE_STATUS_READY_MASK                      \
+    (WAVE_STATUS_REG_READY | WAVE_STATUS_RX_DONE)
 #define WAVE_BURST_SAMPLE_COUNT                     4096U
 #define WAVE_BURST_GUARD_FRAME_COUNT                2U
 #define WAVE_BURST_TRAILING_FRAME_COUNT             1U

@@ -84,7 +84,7 @@ spi2.clkQual.$name    = "myGPIOQUAL6";
 spi2.pteQual.$name    = "myGPIOQUAL7";
 
 CMD1.$name                    = "generic_ram_lnk";
-CMD1.sectionMemory_text       = ["RAMGS1","RAMGS2","RAMGS3","RAMLS0","RAMLS1","RAMLS2","RAMLS3","RAMLS4"];
+CMD1.sectionMemory_text       = ["RAMGS1","RAMGS2","RAMGS3","RAMGS7","RAMLS0","RAMLS1","RAMLS2","RAMLS3","RAMLS4"];
 CMD1.sectionMemory_ramfunc    = ["RAMM0"];
 CMD1.sectionMemory_cinit      = ["RAMM0"];
 CMD1.sectionMemory_stack      = ["RAMM1"];

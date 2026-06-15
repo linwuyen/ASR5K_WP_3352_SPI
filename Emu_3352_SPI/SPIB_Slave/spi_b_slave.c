@@ -118,10 +118,111 @@ static uint16_t s_u16WaveBurstFrames = 0U;
 static bool     s_bWaveSuppressResponse = false;
 
 /* B016: fault report registers + fault clear, per-burst parse-fail flag,
- * sliced wave parse, wave buffer Hi-half restored with boot-time guard. */
+ * sliced wave parse, wave buffer Hi-half restored with boot-time guard.
+ * B017: post-wave replay suppresses SPI responses (no TX-FIFO pollution) +
+ * RX/TX FIFO flush on burst->RegFrame restore (FinishPostWave / DrainAndExit).
+ * B01E: wave completion is derived from the received burst; 0x095A exposes
+ * REG_READY/RX_DONE/ERROR for master-side status polling. */
 #pragma DATA_SECTION(gSpibFwBuildTag, "spib_slave_state")
-volatile uint16_t gSpibFwBuildTag = 0xB016U;
+volatile uint16_t gSpibFwBuildTag = 0xB01EU;
+
+/* ---- DIAGNOSTIC: slave-side post-burst timing (B01D) --------------------
+ * Ticks (U32_UPCNTS, 50 MHz, wraps at SW_TIMER) captured through the
+ * FinishPostWave recovery so the master/slave seam can be measured against
+ * the master-side ticks. */
+#pragma DATA_SECTION(g_u32DiagSlaveFinishEnterTick, "spib_slave_state")
+volatile uint32_t g_u32DiagSlaveFinishEnterTick;
+#pragma DATA_SECTION(g_u32DiagSlaveRecoverStartTick, "spib_slave_state")
+volatile uint32_t g_u32DiagSlaveRecoverStartTick;
+#pragma DATA_SECTION(g_u32DiagSlaveRecoverEndTick, "spib_slave_state")
+volatile uint32_t g_u32DiagSlaveRecoverEndTick;
+#pragma DATA_SECTION(g_u32DiagSlaveRegDmaArmedTick, "spib_slave_state")
+volatile uint32_t g_u32DiagSlaveRegDmaArmedTick;
+#pragma DATA_SECTION(g_u32DiagSlavePendingClearTick, "spib_slave_state")
+volatile uint32_t g_u32DiagSlavePendingClearTick;
 volatile uint32_t g_u32DebugLastTx;
+
+/* ---- DIAGNOSTIC: RX/TX frame ring buffers (B018) ------------------------
+ * Capture the last SPIB_DIAG_LOG_DEPTH frames the normal (non-wave) RX path
+ * latched (INCLUDING idle 0xFFFF frames, which g_u32SpiSlaveLastRequest
+ * hides) and the responses written via writeDirectSpiResponse.  After a
+ * failed run, read these to see the exact word alignment around the post-
+ * burst 0x0959 transaction.  *Idx points to the NEXT slot; newest entry is
+ * (*Idx - 1) & (DEPTH-1), going backwards in time.  DEPTH must stay 2^n. */
+#define SPIB_DIAG_LOG_DEPTH 16U
+#pragma DATA_SECTION(g_u16SpibRxLogCmd, "spib_slave_state")
+volatile uint16_t g_u16SpibRxLogCmd[SPIB_DIAG_LOG_DEPTH];
+#pragma DATA_SECTION(g_u16SpibRxLogData, "spib_slave_state")
+volatile uint16_t g_u16SpibRxLogData[SPIB_DIAG_LOG_DEPTH];
+#pragma DATA_SECTION(g_u16SpibRxLogIdx, "spib_slave_state")
+volatile uint16_t g_u16SpibRxLogIdx;
+#pragma DATA_SECTION(g_u16SpibTxLogAddr, "spib_slave_state")
+volatile uint16_t g_u16SpibTxLogAddr[SPIB_DIAG_LOG_DEPTH];
+#pragma DATA_SECTION(g_u16SpibTxLogData, "spib_slave_state")
+volatile uint16_t g_u16SpibTxLogData[SPIB_DIAG_LOG_DEPTH];
+#pragma DATA_SECTION(g_u16SpibTxLogIdx, "spib_slave_state")
+volatile uint16_t g_u16SpibTxLogIdx;
+
+/* ---- DIAGNOSTIC: RX/DMA steady-state snapshot (B019) --------------------
+ * Sampled at the top of pollReceiveFromSpi() every call.  After a failed run
+ * (master has stopped clocking), these show whether the post-burst 0x0959 is
+ * stuck in the RX FIFO (DMA trigger dead), the DMA run/armed state, and
+ * whether the slave wrongly thinks it is still in wave/parse mode.
+ *   g_u16DiagRxFifoLvl : SPI_getRxFIFOStatus (words waiting in RX FIFO)
+ *   g_u16DiagDmaRun    : DMA channel RUNSTS (1 = armed/running, 0 = done)
+ *   g_u16DiagDmaArmed  : s_bSpibRxDmaArmed
+ *   g_u16DiagInWave    : s_bSpibRxInWaveMode
+ *   g_u16DiagPending   : g_u16WaveRawParsePending
+ *   g_u32DiagPollCount : pollReceiveFromSpi() call counter (proves it runs)
+ *   g_u32DiagNormalFrames : times the normal RegFrame branch processed a frame */
+#pragma DATA_SECTION(g_u16DiagRxFifoLvl, "spib_slave_state")
+volatile uint16_t g_u16DiagRxFifoLvl;
+#pragma DATA_SECTION(g_u16DiagDmaRun, "spib_slave_state")
+volatile uint16_t g_u16DiagDmaRun;
+#pragma DATA_SECTION(g_u16DiagDmaArmed, "spib_slave_state")
+volatile uint16_t g_u16DiagDmaArmed;
+#pragma DATA_SECTION(g_u16DiagInWave, "spib_slave_state")
+volatile uint16_t g_u16DiagInWave;
+#pragma DATA_SECTION(g_u16DiagPending, "spib_slave_state")
+volatile uint16_t g_u16DiagPending;
+#pragma DATA_SECTION(g_u32DiagPollCount, "spib_slave_state")
+volatile uint32_t g_u32DiagPollCount;
+#pragma DATA_SECTION(g_u32DiagNormalFrames, "spib_slave_state")
+volatile uint32_t g_u32DiagNormalFrames;
+/* RX FIFO word count seen at the post-burst RegFrame restore (B01A). >=2 means
+ * the 0x0959 was resident and edge-trigger recovery had to force-capture it. */
+#pragma DATA_SECTION(g_u16DiagFifoAtRestore, "spib_slave_state")
+volatile uint16_t g_u16DiagFifoAtRestore;
+/* Number of times the edge-trigger watchdog force-kicked a stuck resident
+ * frame (B01A).  Non-zero proves the edge-trap was the failure mechanism. */
+#pragma DATA_SECTION(g_u32DiagForceKickCount, "spib_slave_state")
+volatile uint32_t g_u32DiagForceKickCount;
+
+/* ---- DIAGNOSTIC: SPIB SPI peripheral register snapshot (B01B) -----------
+ * The slave RX FIFO stays empty after the burst even though the DMA is armed
+ * and the master is clocking -- so the SPI peripheral RX itself is refusing
+ * data.  These raw registers reveal why:
+ *   g_u32DiagSpiIntStatus : SPI_getInterruptStatus (RX_OVERRUN / RXFF_OVERFLOW)
+ *   g_u16DiagSpiFfrx      : SPIFFRX  (bit15 RXFFOVF, bit13 RXFIFORESET,
+ *                                     bits12:8 RXFFST, bit7 RXFFINT)
+ *   g_u16DiagSpiCcr       : SPICCR   (bit7 SPISWRESET: 1=operational, 0=reset) */
+#pragma DATA_SECTION(g_u32DiagSpiIntStatus, "spib_slave_state")
+volatile uint32_t g_u32DiagSpiIntStatus;
+#pragma DATA_SECTION(g_u16DiagSpiFfrx, "spib_slave_state")
+volatile uint16_t g_u16DiagSpiFfrx;
+#pragma DATA_SECTION(g_u16DiagSpiCcr, "spib_slave_state")
+volatile uint16_t g_u16DiagSpiCcr;
+/* SPI peripheral state frozen at the FIRST 2ms watchdog reset (B01C) = the
+ * failure state before the reset heals it.  If the proactive recovery in
+ * SPIB_RxWaveFinishPostWave works, the watchdog never fires and these stay 0. */
+#pragma DATA_SECTION(g_u16DiagFfrxAtReset, "spib_slave_state")
+volatile uint16_t g_u16DiagFfrxAtReset;
+#pragma DATA_SECTION(g_u16DiagCcrAtReset, "spib_slave_state")
+volatile uint16_t g_u16DiagCcrAtReset;
+#pragma DATA_SECTION(g_u16DiagRxLvlAtReset, "spib_slave_state")
+volatile uint16_t g_u16DiagRxLvlAtReset;
+#pragma DATA_SECTION(g_u32DiagIntStatusAtReset, "spib_slave_state")
+volatile uint32_t g_u32DiagIntStatusAtReset;
 volatile uint32_t g_u32SpiSlaveLastRequest;
 
 static void SPIB_RxRestartRegFrameDma(void);
@@ -185,6 +286,12 @@ static ST_WR_PARSER s_sSpiParser;
 static bool s_bSpibRxDmaArmed = false;
 static bool s_bSpibRxPartialPending = false;
 static uint32_t s_u32SpibRxPartialTicks = 0U;
+
+/* Edge-trigger watchdog debounce: consecutive polls a full frame has sat
+ * resident in the RX FIFO with the DMA armed but not done.  The normal
+ * mid-capture transient clears in < 1 poll; the edge-trap is permanent. */
+#define SPIB_RX_STUCK_KICK_POLLS 8U
+static uint16_t s_u16RxStuckPolls = 0U;
 static uint32_t s_u32LastRxTicks = 0U;
 static bool s_bSpiClean = false;
 
@@ -380,6 +487,19 @@ static void SPIB_RxRestartRegFrameDma(void)
 
     s_bSpibRxDmaArmed = true;
     s_bSpibRxPartialPending = false;
+
+    /* Edge-trigger recovery: the RX DMA request is an EDGE on RXFFST crossing
+     * RXFFIL (see SPIB_RxWaveEnterBlockMode).  If a full frame is ALREADY
+     * resident in the RX FIFO at re-arm time (e.g. the post-burst 0x0959 that
+     * landed between the previous capture and this restart, or any back-to-back
+     * frame), the level is already >= RX2 so no new edge ever occurs and the
+     * DMA would never trigger -- the RX path goes silent until the next frame.
+     * Force one trigger to capture the resident frame.  When the FIFO is empty
+     * (the normal spaced case) this is a no-op. */
+    if (SPI_getRxFIFOStatus(SPIB_SYSTEM_BASE) >= SPI_FIFO_RX2)
+    {
+        DMA_forceTrigger(SPIB_RX_DMA_CH_BASE);
+    }
 }
 
 void SPIB_RxDmaRestart(void)
@@ -484,7 +604,13 @@ static void SPIB_RxWaveDrainAndExit(uint16_t u16FramesReceived)
     gSpibRxParseOkCount += u16FramesReceived; /* Keep metrics happy */
 
     s_bSpibRxInWaveMode = false;
+    (void)WaveDownload_FinalizeBurst(false);
+
+    /* Restore RegFrame mode.  Any frame already resident in the RX FIFO is
+     * captured by SPIB_RxRestartRegFrameDma's edge-trigger recovery (do NOT
+     * flush here -- flushing would discard a frame the master already sent). */
     SPIB_RxRestartRegFrameDma();
+    WaveDownload_SetRegReady();
 }
 
 /* Final stage of a completed wave burst: account for the control frames
@@ -495,6 +621,9 @@ static void SPIB_RxWaveFinishPostWave(void)
     uint32_t u32WordsReceived = 0U;
     uint32_t u32FramesReceived;
     uint32_t i;
+    bool bTransportOk = true;
+
+    g_u32DiagSlaveFinishEnterTick = U32_UPCNTS;   /* B01D */
 
     if (s_bWaveParseFailed)
     {
@@ -517,17 +646,26 @@ static void SPIB_RxWaveFinishPostWave(void)
         u32WordsReceived = SPIB_POST_WAVE_CMD_WORDS;
         g_u32PostWaveCmdOverflowCount++;
         gSpibRxErrorFlags |= SPIB_RX_ERR_POST_WAVE_OVERFLOW;
+        bTransportOk = false;
     }
 
     if ((u32WordsReceived % 2U) != 0U)
     {
         g_u32PostWaveCmdPartialFrameCount++;
         gSpibRxErrorFlags |= SPIB_RX_ERR_POST_WAVE_PARTIAL_FRAME;
+        bTransportOk = false;
     }
 
     u32FramesReceived = u32WordsReceived / 2U;
     g_u32PostWaveCmdFramesParsed += u32FramesReceived;
 
+    /* These frames are REPLAYED after the fact: the master already clocked
+     * them during the burst and read transport filler, so it is not waiting
+     * for a response now.  Emitting writeDirectSpiResponse() here would push
+     * stale echo words (e.g. for spilled tail samples 0x3FFE/0x3FFF) into the
+     * TX FIFO.  Suppress responses so the replay only updates slave state;
+     * the master will read completion later through 0x095A status polling. */
+    s_bWaveSuppressResponse = true;
     for (i = 0U; i < u32FramesReceived; i++)
     {
         uint16_t cmd  = g_u16PostWaveCmdBuffer[i * 2U];
@@ -541,12 +679,48 @@ static void SPIB_RxWaveFinishPostWave(void)
 
         (void)SPIB_ParseRegFrame(cmd, data);
     }
+    s_bWaveSuppressResponse = false;
 
     g_u32WaveRawParseCount++;
-    g_u16WaveRawParsePending = 0U;
+    (void)WaveDownload_FinalizeBurst(
+        bTransportOk && (s_bWaveParseFailed == false));
 
-    /* Restore normal RegFrame[2] DMA */
+    /* DIAG: RX FIFO level seen right after the burst, before recovery. */
+    g_u16DiagFifoAtRestore = (uint16_t)SPI_getRxFIFOStatus(SPIB_SYSTEM_BASE);
+
+    /* Proactive full SPI module recovery (B01C).  ROOT CAUSE: a long continuous
+     * burst leaves the SPIB SPI RX de-framed / overflow-locked, so it can drop
+     * the first post-burst register transaction.  A
+     * FIFO reset alone does NOT clear this -- proven by builds B017..B019, which
+     * flushed/force-triggered the FIFO and still failed.  Only an SPISWRESET
+     * (disable/enable) restores RX framing.  The existing 2ms watchdog already
+     * performs exactly this recovery and is the reason the SPI looks healthy by
+     * the time we halt (u32ResetCount==1).  Do the same recovery proactively
+     * here while pending remains set, so RX is fully re-framed before status
+     * polling begins.  Mirrors the watchdog body. */
+    g_u32DiagSlaveRecoverStartTick = U32_UPCNTS;   /* B01D */
+    if (s_bTxStatusActive == false)
+    {
+        SPI_disableModule(SPIB_SYSTEM_BASE);
+        SPI_enableModule(SPIB_SYSTEM_BASE);
+        SPI_resetRxFIFO(SPIB_SYSTEM_BASE);
+        SPI_resetTxFIFO(SPIB_SYSTEM_BASE);
+        SPI_clearInterruptStatus(SPIB_SYSTEM_BASE, SPI_INT_RX_OVERRUN);
+    }
+    g_u32DiagSlaveRecoverEndTick = U32_UPCNTS;   /* B01D */
+    /* Mark RX activity so the 2ms watchdog does not also fire a redundant
+     * reset right after this proactive one. */
+    s_u32LastRxTicks = U32_UPCNTS;
+    s_bSpiClean = true;
+
+    /* Restore normal RegFrame[2] DMA (with edge-trigger recovery for a frame
+     * already resident in the FIFO). */
     SPIB_RxRestartRegFrameDma();
+    g_u32DiagSlaveRegDmaArmedTick = U32_UPCNTS;   /* B01D */
+    WaveDownload_SetRegReady();
+
+    g_u16WaveRawParsePending = 0U;
+    g_u32DiagSlavePendingClearTick = U32_UPCNTS;   /* B01D */
 }
 
 /* One bounded slice of the deferred wave block parse.  Runs instead of the
@@ -729,6 +903,12 @@ static void writeDirectSpiResponse(uint16_t u16Address, uint16_t u16Data)
     }
 
     g_u32DebugLastTx = ((uint32_t)u16RespAddr << 16) | u16Data;
+
+    /* DIAG (B018): log every response actually pushed to the TX FIFO. */
+    g_u16SpibTxLogAddr[g_u16SpibTxLogIdx] = u16RespAddr;
+    g_u16SpibTxLogData[g_u16SpibTxLogIdx] = u16Data;
+    g_u16SpibTxLogIdx =
+        (uint16_t)((g_u16SpibTxLogIdx + 1U) & (SPIB_DIAG_LOG_DEPTH - 1U));
 
     SPI_writeDataNonBlocking(SPIB_SYSTEM_BASE, u16RespAddr);
     SPI_writeDataNonBlocking(SPIB_SYSTEM_BASE, u16Data);
@@ -953,8 +1133,7 @@ static uint16_t tryHandleFastPath(uint16_t u16Address, uint16_t u16Data)
         s_bWaveBurstBegin = false;
         s_u16WaveBurstFrames = 0U;
         if ((OUTPUT_ON == 0U) &&
-            (g_waveDownload.u16SelectedPage != WAVE_PAGE_INVALID) &&
-            (u16Data == WAVE_BURST_SAMPLE_COUNT))
+            (WaveDownload_BeginBurst(u16Data) == u16Data))
         {
             u16RespData = u16Data;
             s_bWaveBurstBegin = true;
@@ -1414,6 +1593,20 @@ void pollReceiveFromSpi(void)
     SPI_RxFIFOLevel eRxFifoLevel;
     bool bDmaDone;
 
+    /* DIAG (B019): steady-state snapshot of the RX/DMA condition. */
+    g_u32DiagPollCount++;
+    g_u16DiagRxFifoLvl = (uint16_t)SPI_getRxFIFOStatus(SPIB_SYSTEM_BASE);
+    g_u16DiagDmaRun =
+        (uint16_t)(DMA_getRunStatusFlag(SPIB_RX_DMA_CH_BASE) ? 1U : 0U);
+    g_u16DiagDmaArmed = (uint16_t)(s_bSpibRxDmaArmed ? 1U : 0U);
+    g_u16DiagInWave = (uint16_t)(s_bSpibRxInWaveMode ? 1U : 0U);
+    g_u16DiagPending = g_u16WaveRawParsePending;
+    /* DIAG (B01B): raw SPI peripheral RX state -- is the FIFO in reset / has it
+     * latched an overflow that is now silently discarding incoming frames? */
+    g_u32DiagSpiIntStatus = SPI_getInterruptStatus(SPIB_SYSTEM_BASE);
+    g_u16DiagSpiFfrx = HWREGH(SPIB_SYSTEM_BASE + SPI_O_FFRX);
+    g_u16DiagSpiCcr = HWREGH(SPIB_SYSTEM_BASE + SPI_O_CCR);
+
     /* A completed wave block is parsed in bounded slices; CH3 is meanwhile
      * armed on the post-wave command buffer, so the regular poll body (which
      * interprets CH3 state as RegFrame traffic) must not run until done. */
@@ -1476,6 +1669,13 @@ void pollReceiveFromSpi(void)
             s_u16LastRxCmd  = u16Cmd;
             s_u16LastRxData = u16Data;
 
+            /* DIAG (B018): log every latched frame, idle 0xFFFF included. */
+            g_u32DiagNormalFrames++;
+            g_u16SpibRxLogCmd[g_u16SpibRxLogIdx]  = u16Cmd;
+            g_u16SpibRxLogData[g_u16SpibRxLogIdx] = u16Data;
+            g_u16SpibRxLogIdx =
+                (uint16_t)((g_u16SpibRxLogIdx + 1U) & (SPIB_DIAG_LOG_DEPTH - 1U));
+
             if (u16Cmd != 0xFFFFU)
             {
                 g_u32SpiSlaveLastRequest =
@@ -1514,6 +1714,36 @@ void pollReceiveFromSpi(void)
         }
 
         return;
+    }
+
+    /* Edge-trigger watchdog (B01A): the RX DMA request is an EDGE on RXFFST
+     * crossing RXFFIL.  If a complete frame is resident in the RX FIFO while the
+     * DMA is armed but has not signalled done, no rising edge ever occurred
+     * (the FIFO was already >= RX2 when the channel was armed) and the frame
+     * would sit forever -- this is exactly how the post-burst 0x0959 got lost.
+     *
+     * Debounced so it cannot misfire during the sub-poll window where a frame
+     * is legitimately mid-capture (FIFO briefly >= RX2 while the DMA is running
+     * after a natural edge): that condition clears within one poll, whereas the
+     * edge-trap is permanent and accumulates every poll.  Only a persistently
+     * stuck frame reaches the threshold; then force one trigger and the next
+     * poll processes it via the bDmaDone path above. */
+    if ((s_bSpibRxInWaveMode == false) &&
+        (s_bSpibRxDmaArmed != false) &&
+        (eRxFifoLevel >= SPI_FIFO_RX2))
+    {
+        s_u16RxStuckPolls++;
+        if (s_u16RxStuckPolls >= SPIB_RX_STUCK_KICK_POLLS)
+        {
+            s_u16RxStuckPolls = 0U;
+            g_u32DiagForceKickCount++;
+            DMA_forceTrigger(SPIB_RX_DMA_CH_BASE);
+            return;
+        }
+    }
+    else
+    {
+        s_u16RxStuckPolls = 0U;
     }
 
     /* Wave block in flight: block completion and stall recovery own the RX
@@ -1659,6 +1889,20 @@ void pollReceiveFromSpi(void)
         if (!s_bSpiClean)
         {
             spiB_slave.u32ResetCount++;
+
+            /* DIAG (B01C): freeze the SPI peripheral state at the moment the
+             * watchdog decides to reset -- this is the failure state, before
+             * the reset heals it.  Captured only on the FIRST watchdog reset so
+             * it is not overwritten by later idle resets. */
+            if (spiB_slave.u32ResetCount == 1U)
+            {
+                g_u16DiagFfrxAtReset = HWREGH(SPIB_SYSTEM_BASE + SPI_O_FFRX);
+                g_u16DiagCcrAtReset = HWREGH(SPIB_SYSTEM_BASE + SPI_O_CCR);
+                g_u16DiagRxLvlAtReset =
+                    (uint16_t)SPI_getRxFIFOStatus(SPIB_SYSTEM_BASE);
+                g_u32DiagIntStatusAtReset =
+                    SPI_getInterruptStatus(SPIB_SYSTEM_BASE);
+            }
 
             if (s_bTxStatusActive)
             {

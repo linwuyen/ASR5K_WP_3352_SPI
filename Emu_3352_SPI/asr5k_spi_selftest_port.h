@@ -144,6 +144,23 @@ static inline uint16_t SelfTestPort_WaveSampleCount(uint16_t u16Page)
     return g_waveDownload.u16SampleCount[u16Page];
 }
 
+static inline uint16_t SelfTestPort_CommandPostProcessSnapshot(void)
+{
+    uint16_t u16Snapshot = 0U;
+
+    if (g_u16WaveRawParsePending == 0U) {
+        u16Snapshot |= SPIA_DIAG_GATE_PENDING_CLEAR;
+    }
+    if (g_u16DiagInWave == 0U) {
+        u16Snapshot |= SPIA_DIAG_GATE_OUT_OF_WAVE;
+    }
+    if (g_u16DiagDmaArmed != 0U) {
+        u16Snapshot |= SPIA_DIAG_GATE_DMA_ARMED;
+    }
+
+    return u16Snapshot;
+}
+
 static inline uint16_t SelfTestPort_WaveAddressContinuous(uint16_t u16Page)
 {
     return (g_waveDownload.bAddressContinuous[u16Page] != 0U) ? 1U : 0U;

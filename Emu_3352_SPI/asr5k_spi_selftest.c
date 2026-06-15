@@ -21,6 +21,7 @@
 #include "asr5k_spi_selftest_port.h"
 #include "board.h"
 #include "driverlib.h"
+#include "timetask.h"
 
 /* ========================================================================
  * Engine configuration
@@ -29,6 +30,7 @@
 #define SELFTEST_EXECUTED_COUNT  9U
 #define SELFTEST_UART_RX_SIZE    16U
 #define SELFTEST_UART_TX_SIZE    96U
+#define SELFTEST_POST_WAVE_GUARD_TICKS T_50US
 
 #define SELFTEST_TARGET_PAGE     1U      /* wave page used by Test5~9      */
 
@@ -273,6 +275,10 @@ static uint16_t s_testIndex;          /* index into s_testTable            */
 static uint16_t s_stepIndex;          /* index into current step table     */
 #pragma DATA_SECTION(s_waitCount, "asr5k_spi_selftest_state")
 static uint32_t s_waitCount;
+#pragma DATA_SECTION(s_postWaveGuardStartTick, "asr5k_spi_selftest_state")
+static uint32_t s_postWaveGuardStartTick;
+#pragma DATA_SECTION(s_postWaveGuardActive, "asr5k_spi_selftest_state")
+static uint16_t s_postWaveGuardActive;
 
 #pragma DATA_SECTION(s_uartRx, "asr5k_spi_selftest_state")
 static char s_uartRx[SELFTEST_UART_RX_SIZE];
@@ -295,6 +301,17 @@ static ASR5K_SPI_SELFTEST_STATUS_e s_uartLastStatus;
 static const ST_SELFTEST_TEST *currentTest(void)
 {
     return &s_testTable[s_testIndex];
+}
+
+static uint32_t selfTestElapsedTicks(uint32_t u32StartTick)
+{
+    uint32_t u32Now = U32_UPCNTS;
+
+    if (u32Now >= u32StartTick) {
+        return u32Now - u32StartTick;
+    }
+
+    return (SW_TIMER - u32StartTick) + u32Now;
 }
 
 static volatile ST_ASR5K_SPI_TEST_RESULT *currentResult(void)
@@ -767,6 +784,14 @@ static void resetResults(void)
     g_asr5kSpiSelfTest.fault_code = 0U;
     g_asr5kSpiSelfTest.completed_test_count = 0U;
     g_asr5kSpiSelfTest.implemented_test_count = SELFTEST_EXECUTED_COUNT;
+    g_u32DiagMasterBurstDoneTick = 0U;
+    g_u32DiagMasterSend0959Tick = 0U;
+    g_u32DiagMasterWaitAckStartTick = 0U;
+    g_u32DiagMasterWaitAckFailTick = 0U;
+    g_u16DiagMasterLastTxCmd = 0U;
+    g_u16DiagMasterLastTxData = 0U;
+    g_u16DiagMasterStepAt0959 = 0U;
+    g_u16DiagMasterGateSeen = 0U;
 
     for (u16Index = 0U; u16Index < ASR5K_SPI_SELFTEST_RECORD_COUNT;
          u16Index++) {
@@ -783,6 +808,8 @@ static void resetResults(void)
     s_testIndex = 0U;
     s_stepIndex = 0U;
     s_waitCount = 0U;
+    s_postWaveGuardStartTick = 0U;
+    s_postWaveGuardActive = 0U;
     s_state = SELFTEST_STATE_START;
 }
 
@@ -816,6 +843,42 @@ static void startCurrentStep(void)
         pResult->status = ASR5K_SPI_TEST_RUNNING;
     }
     pResult->current_step = s_stepIndex;
+
+    if ((pStep->eCommand == SPI_MASTER_TEST_CMD_WRITE) &&
+        (pStep->u16Address == WAVE_DOWNLOAD_CTRL_ADDR) &&
+        (pStep->u16Data == 1U)) {
+        uint16_t u16GateSnapshot =
+            SelfTestPort_CommandPostProcessSnapshot();
+
+        g_u16DiagMasterStepAt0959 = s_stepIndex;
+        g_u16DiagMasterGateSeen = u16GateSnapshot;
+
+        if ((u16GateSnapshot & SPIA_DIAG_GATE_READY_MASK) !=
+            SPIA_DIAG_GATE_READY_MASK) {
+            s_postWaveGuardActive = 0U;
+            s_waitCount++;
+            if (s_waitCount > SELFTEST_WAIT_LIMIT) {
+                failSelfTest(ASR5K_SPI_FAIL_STEP_START,
+                             SELFTEST_FAULT_START_REJECTED);
+            }
+            return;
+        }
+
+        if (s_postWaveGuardActive == 0U) {
+            s_postWaveGuardStartTick = U32_UPCNTS;
+            s_postWaveGuardActive = 1U;
+            return;
+        }
+
+        if (selfTestElapsedTicks(s_postWaveGuardStartTick) <
+            SELFTEST_POST_WAVE_GUARD_TICKS) {
+            return;
+        }
+
+        g_u16DiagMasterGateSeen =
+            (uint16_t)(u16GateSnapshot |
+                       SPIA_DIAG_GATE_GUARD_ELAPSED);
+    }
 
     if (SelfTestPort_MasterStart(pStep->eCommand,
                                  pStep->u16Address,

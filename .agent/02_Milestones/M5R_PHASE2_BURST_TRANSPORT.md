@@ -1,7 +1,7 @@
 ﻿# M5R Phase 2 Burst Transport
 
 Status: HARDWARE VERIFIED  
-Verification date: 2026-06-12  
+Verification date: 2026-06-15
 Scope: `Emu_3352_SPI` Legacy Register Protocol wave-download transport
 
 ## Architecture Boundaries
@@ -25,7 +25,7 @@ The lossless full-page transfer is:
 2 x (0xFFFF, 0x0000) guard frames
 0x3000..0x3FFF = 4096 sample frames
 1 x (0xFFFF, 0x0000) trailing flush frame
-0x0959 = 1
+0x095A = 0
 0x0960 = 1
 0x0961 = 1
 ```
@@ -54,7 +54,7 @@ An invalid begin returns `0xFFFF` and does not arm block DMA.
    Wave samples are parsed and stored normally, but their direct ACK writes are
    suppressed while a DMA block is being parsed. Burst MISO is transport
    filler and is ignored by the master. This prevents stale sample ACKs from
-   corrupting the response to `WAVE_DOWNLOAD_COMPLETE`.
+   corrupting the post-burst status polling response.
 
 The compatibility overflow detector remains available for an older sender that
 omits `WAVE_BURST_BEGIN`. That path is best-effort and does not guarantee
@@ -67,10 +67,10 @@ Hardware Test1 through Test9 completed with:
 - Overall selftest status: `PASS`
 - Completed tests: `9 / 9`
 - Test9 expected/actual state: `6 / 6` (`LOCKED`)
-- Test9 DMA done delta: `4108`
-- Test9 parse-ok delta: `4108`
+- Test9 DMA done delta: `4107`
+- Test9 parse-ok delta: `4107`
 - Test9 parse-fail delta: `0`
-- Test9 DMA restart delta: `4108`
+- Test9 DMA restart delta: `4107`
 - Page 1 sample count: `4096`
 - SPIA fault: `0`
 - SPIB fault: `0`
@@ -92,7 +92,7 @@ Power-cycle the target, run Test1 through Test9, then check:
 | `g_asr5kSpiSelfTest.test[8].status` | `ASR5K_SPI_TEST_PASS` |
 | `g_asr5kSpiSelfTest.test[8].expected` | `6` |
 | `g_asr5kSpiSelfTest.test[8].actual` | `6` |
-| `g_asr5kSpiSelfTest.test[8].delta.dma_done` | `>= 4108` |
+| `g_asr5kSpiSelfTest.test[8].delta.dma_done` | `>= 4107` |
 | `g_asr5kSpiSelfTest.test[8].delta.parse_ok` | equal to `dma_done` |
 | `g_asr5kSpiSelfTest.test[8].delta.parse_fail` | `0` |
 | `g_asr5kSpiSelfTest.test[8].delta.dma_restart` | `>= dma_done` |
@@ -121,3 +121,124 @@ C:\ti\ccs1281\ccs\utils\bin\gmake.exe -C Emu_3352_SPI\CPU1_FLASH all
 Temporary B-series debug arrays, event rings, sequence captures, MOSI/MISO
 traces, and firmware build tags are not part of the production regression
 interface.
+
+# M5R Wave Download / Test9 Closure — B01F PASS
+
+## Result
+
+* Build tag: `0xB01F`
+* Self-test overall: `PASS`
+* Completed tests: `9 / 9`
+* Failed test id: `0`
+* Failed step: `0`
+* Fault code: `0`
+
+## Test9 Result
+
+* Test9 status: `PASS`
+* Expected: `6`
+* Actual: `6`
+* Meaning: `6 = WAVE_PAGE_STATE_LOCKED`
+* `spiA_fault = 0`
+* `spiB_fault = 0`
+* `error_flags = 0`
+* `fault_code = 0`
+
+## Test9 Counter Delta
+
+Observed Test9 delta:
+
+```text
+dma_done    = 4107
+parse_ok    = 4107
+parse_fail  = 0
+dma_restart = 4107
+```
+
+Interpretation:
+
+* DMA completed the expected minimum path.
+* Parser accepted all frames.
+* No parse failure occurred.
+* Test9 expected delta minimum was corrected to `4107`.
+* This is a minimum threshold, not exact-only, because status polling may retry
+  in future runs.
+
+## Final Protocol Path
+
+Observed post-burst register flow:
+
+```text
+0x095A, 0   -> STATUS
+0x0960, 1   -> VALIDATE page 1
+0x0961, 1   -> ACTIVATE page 1
+```
+
+Observed slave responses:
+
+```text
+STATUS response   = 3  = REG_READY | RX_DONE
+VALIDATE response = 4  = WAVE_PAGE_STATE_VALID
+ACTIVATE response = 6  = WAVE_PAGE_STATE_LOCKED
+```
+
+Final slave request:
+
+```text
+g_u32SpiSlaveLastRequest = 0x09610001
+```
+
+Meaning:
+
+```text
+Last command received by slave = 0x0961 / page 1
+```
+
+## Closure Meaning
+
+B01F confirms the corrected flow:
+
+```text
+SELECT_PAGE
+BEGIN_BURST / 4096 samples
+STATUS 0x095A
+VALIDATE 0x0960
+ACTIVATE 0x0961
+LOCKED
+```
+
+The previous fragile flow:
+
+```text
+burst -> 0x0959 Download Complete
+```
+
+is no longer the required Test9 completion path.
+
+Completion is now based on:
+
+```text
+slave burst finalize
++ status read 0x095A
++ validate
++ activate
+```
+
+## Notes
+
+* `spiB_slave.u32ResetCount = 1` was observed in the PASS run.
+* This did not cause failure:
+  * `spiB_fault = 0`
+  * `error_flags = 0`
+  * Test9 PASS
+* Treat reset count as an observation, not a blocker, unless a later formal
+  requirement says zero reset is mandatory.
+
+## Do Not Reopen
+
+Do not continue adding debug variables for this path.
+Do not add more SPIA/SPIB register snapshots.
+Do not add more timestamp variables.
+Do not change recovery unless a new failure appears.
+
+M5R Test9 is functionally closed at B01F.

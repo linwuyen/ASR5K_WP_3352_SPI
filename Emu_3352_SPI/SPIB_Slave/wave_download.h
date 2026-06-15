@@ -12,6 +12,14 @@
 #ifndef WAVE_PAGE_STATUS_ADDR
 #define WAVE_PAGE_STATUS_ADDR       0x095A
 #endif
+/* Deprecated compatibility alias.
+ * 0x0959 Download Complete is no longer a protocol step.  Any legacy code
+ * that still names WAVE_DOWNLOAD_CTRL_ADDR is routed to the status register
+ * so the master must observe slave-side RX_DONE/REG_READY instead of sending
+ * an extra post-burst completion command. */
+#ifndef WAVE_DOWNLOAD_CTRL_ADDR
+#define WAVE_DOWNLOAD_CTRL_ADDR     WAVE_PAGE_STATUS_ADDR
+#endif
 #ifndef WAVE_VALIDATE_ADDR
 #define WAVE_VALIDATE_ADDR          0x0960
 #endif
@@ -139,19 +147,19 @@ uint16_t WaveDownload_GetStatus(void);
 uint16_t WaveDownload_ValidatePage(uint16_t u16OutputOn);
 
 /**
- * @brief Activate selected page for DDS.
+ * @brief Activate selected page.
  * @param u16OutputOn  Current OUTPUT_ON state (0 = output off).
  */
 uint16_t WaveDownload_ActivatePage(uint16_t u16OutputOn);
 
 /**
- * @brief Get state of specified page.
+ * @brief Return page state for diagnostics/tests.
  */
 uint16_t WaveDownload_GetPageState(uint16_t u16Page);
 
 /**
- * @brief Route write commands to Wave Download Service if applicable.
- * @param u16OutputOn  Current OUTPUT_ON state forwarded to validate/activate.
+ * @brief Wave Download Service address handler.
+ * @return true if address was handled by wave download service.
  */
 bool WaveDownload_HandleWrite(uint16_t u16Address, uint16_t u16Data,
                               uint16_t *pu16Response, uint16_t u16OutputOn);

@@ -1,2 +1,5 @@
 /CPU1_FLASH/
 /CPU1_RAM/
+/SPI_PacketV1/*.exe
+/SPI_PacketV1/*.o
+spi_packet_v1_test.exe

@@ -10,11 +10,11 @@
  *   Test4  SEQ block write x16            (legacy, unchanged)
  *   Test5  Wave page select               0x0958 + page_id -> selected-page metadata
  *   Test6  Wave sample write (partial)    0x3000~0x3FFF window -> page/index correctness
- *   Test7  Download complete transition   DOWNLOADING -> DOWNLOAD_COMPLETE
+ *   Test7  Incomplete page status guard  Remains DOWNLOADING, RX_DONE clear
  *   Test8  Validate pre-check (negative)  sample count / continuity / checksum
  *                                         gatekeeping; incomplete page must be
  *                                         rejected and Output must be OFF
- *   Test9  Full 4096 download -> complete -> validate -> activate
+ *   Test9  Full 4096 download -> status -> validate -> activate
  *                                         long-transfer stability, zero DMA loss,
  *                                         parser counters, final page state LOCKED
  */

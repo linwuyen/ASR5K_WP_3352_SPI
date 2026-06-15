@@ -328,12 +328,10 @@ typedef struct {
 extern ST_SPI_MASTER_CONTROL spiA_master;
 extern volatile u16 g_u16SpiMasterWaveRam[SPI_SINE_TABLE_SIZE];
 extern volatile u32 g_u32DiagMasterBurstDoneTick;
-extern volatile u32 g_u32DiagMasterSend0959Tick;
 extern volatile u32 g_u32DiagMasterWaitAckStartTick;
 extern volatile u32 g_u32DiagMasterWaitAckFailTick;
 extern volatile u16 g_u16DiagMasterLastTxCmd;
 extern volatile u16 g_u16DiagMasterLastTxData;
-extern volatile u16 g_u16DiagMasterStepAt0959;
 extern volatile u16 g_u16DiagMasterGateSeen;
 
 // ============================================================================

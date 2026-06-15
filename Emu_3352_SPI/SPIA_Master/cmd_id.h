@@ -269,7 +269,6 @@
 
 #define WAVE_PAGE_SELECT_ADDR                       0x0958
 #define WAVE_PAGE_STATUS_ADDR                       0x095A
-#define WAVE_DOWNLOAD_CTRL_ADDR                     WAVE_PAGE_STATUS_ADDR
 #define WAVE_BURST_BEGIN_ADDR                       0x095B
 #define WAVE_VALIDATE_ADDR                          0x0960
 #define WAVE_ACTIVATE_ADDR                          0x0961

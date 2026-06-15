@@ -45,7 +45,7 @@ flowchart TD
     DMA --> BURST["4096 sample burst buffer"]
     REG --> PARSER["Legacy 暫存器解析器"]
     BURST --> PARSER
-    PARSER --> CTRL["0x0958/0959/095B/0960/0961"]
+    PARSER --> CTRL["0x0958/095A/095B/0960/0961"]
     PARSER --> WINDOW["0x3000..0x3FFF sample window"]
     CTRL --> SERVICE["波形下載服務"]
     WINDOW --> SERVICE
@@ -75,7 +75,7 @@ flowchart TD
 2 x guard frame
 0x3000..0x3FFF = 4096 samples
 1 x trailing flush frame
-0x0959 = 1
+0x095A = 0 until REG_READY | RX_DONE
 0x0960 = 1
 0x0961 = 1
 ```

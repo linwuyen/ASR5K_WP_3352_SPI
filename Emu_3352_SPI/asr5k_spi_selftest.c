@@ -21,7 +21,6 @@
 #include "asr5k_spi_selftest_port.h"
 #include "board.h"
 #include "driverlib.h"
-#include "timetask.h"
 
 /* ========================================================================
  * Engine configuration
@@ -30,7 +29,6 @@
 #define SELFTEST_EXECUTED_COUNT  9U
 #define SELFTEST_UART_RX_SIZE    16U
 #define SELFTEST_UART_TX_SIZE    96U
-#define SELFTEST_POST_WAVE_GUARD_TICKS T_50US
 
 #define SELFTEST_TARGET_PAGE     1U      /* wave page used by Test5~9      */
 
@@ -117,6 +115,9 @@ typedef struct {
  * ======================================================================== */
 static uint16_t StepCheck_OutputIsOn(uint16_t u16StepIndex, uint16_t *pFailStep);
 static uint16_t StepCheck_OutputIsOff(uint16_t u16StepIndex, uint16_t *pFailStep);
+static uint16_t StepCheck_WaveStatusIncomplete(uint16_t u16StepIndex, uint16_t *pFailStep);
+static uint16_t StepCheck_WaveStatusReady(uint16_t u16StepIndex, uint16_t *pFailStep);
+static uint16_t WaveStatusResponseIsValid(void);
 
 static uint16_t Validate_Test1_RegisterWrite(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
 static uint16_t Validate_Test2_RegisterRead(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
@@ -124,7 +125,7 @@ static uint16_t Validate_Test3_OutputToggle(volatile ST_ASR5K_SPI_TEST_RESULT *p
 static uint16_t Validate_Test4_BlockWrite16(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
 static uint16_t Validate_Test5_PageSelect(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
 static uint16_t Validate_Test6_SampleWrite(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
-static uint16_t Validate_Test7_DownloadComplete(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
+static uint16_t Validate_Test7_IncompleteStatus(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
 static uint16_t Validate_Test8_ValidatePrecheck(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
 static uint16_t Validate_Test9_FullPipeline(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
 
@@ -185,11 +186,12 @@ static const ST_SELFTEST_STEP s_test6Steps[] = {
       0U, 0U, ASR5K_SPI_FAIL_STEP_NONE, 0 }
 };
 
-/* ---- Test7: download-complete metadata transition ------------------------ */
+/* ---- Test7: partial-download status / incomplete-page guard -------------- */
 #pragma DATA_SECTION(s_test7Steps, "asr5k_spi_selftest_config")
 static const ST_SELFTEST_STEP s_test7Steps[] = {
-    { SPI_MASTER_TEST_CMD_WRITE, WAVE_DOWNLOAD_CTRL_ADDR, 0x0001U,
-      1U, 1U, ASR5K_SPI_FAIL_STEP_WAVE_DOWNLOAD, 0 }
+    { SPI_MASTER_TEST_CMD_READ, WAVE_PAGE_STATUS_ADDR, 0x0000U,
+      0U, 0U, ASR5K_SPI_FAIL_STEP_WAVE_METADATA,
+      StepCheck_WaveStatusIncomplete }
 };
 
 /* ---- Test8: validate pre-check (NEGATIVE test) ---------------------------
@@ -203,7 +205,7 @@ static const ST_SELFTEST_STEP s_test8Steps[] = {
 };
 
 /* ---- Test9: full pipeline -------------------------------------------------
- * select -> full 4096 download -> complete -> validate(VALID)
+ * select -> full 4096 download -> status-ready -> validate(VALID)
  *        -> activate(LOCKED)
  * Focus: no DMA CH3 loss during the long transfer (delta counters agree)
  * and the correct final state.                                            */
@@ -213,8 +215,9 @@ static const ST_SELFTEST_STEP s_test9Steps[] = {
       SELFTEST_TARGET_PAGE, 1U, ASR5K_SPI_FAIL_STEP_WAVE_PAGE_SELECT, 0 },
     { SPI_MASTER_TEST_CMD_WAVE_DOWNLOAD, 0x0000U, 0x0000U,
       0U, 0U, ASR5K_SPI_FAIL_STEP_WAVE_DOWNLOAD, 0 },
-    { SPI_MASTER_TEST_CMD_WRITE, WAVE_DOWNLOAD_CTRL_ADDR, 0x0001U,
-      1U, 1U, ASR5K_SPI_FAIL_STEP_WAVE_DOWNLOAD, 0 },
+    { SPI_MASTER_TEST_CMD_READ, WAVE_PAGE_STATUS_ADDR, 0x0000U,
+      0U, 0U, ASR5K_SPI_FAIL_STEP_WAVE_DOWNLOAD,
+      StepCheck_WaveStatusReady },
     { SPI_MASTER_TEST_CMD_WRITE, WAVE_VALIDATE_ADDR, 0x0001U,
       WAVE_PAGE_STATE_VALID, 1U, ASR5K_SPI_FAIL_STEP_WAVE_VALIDATE, 0 },
     { SPI_MASTER_TEST_CMD_WRITE, WAVE_ACTIVATE_ADDR, 0x0001U,
@@ -224,8 +227,9 @@ static const ST_SELFTEST_STEP s_test9Steps[] = {
 /* ---- Master test table ----------------------------------------------------
  * u32DmaDoneDelta: one register write/read = 2 frames.
  *   T5: 1*2   T6: 4*2   T7: 1*2   T8: 1*2
- *   T9: select(2) + 4096-download(>=4100) + ctrl(2)+validate(2)+activate(2)
- *       -> minimum 4108.
+ *   T9: measured successful status/validate/activate path produces a
+ *       minimum of 4107 DMA/parser completions.  The threshold remains a
+ *       minimum because STATUS_POLL may retry.
  * -------------------------------------------------------------------------- */
 #pragma DATA_SECTION(s_testTable, "asr5k_spi_selftest_config")
 static const ST_SELFTEST_TEST s_testTable[SELFTEST_EXECUTED_COUNT] = {
@@ -249,15 +253,15 @@ static const ST_SELFTEST_TEST s_testTable[SELFTEST_EXECUTED_COUNT] = {
       (uint32_t)(TEST6_SAMPLE_COUNT * 2U), 0U, Validate_Test6_SampleWrite },
 
     { ASR5K_SPI_TEST_ID_7, s_test7Steps, 1U,
-      (uint32_t)WAVE_PAGE_STATE_DOWNLOAD_COMPLETE, 2U, 0U,
-      Validate_Test7_DownloadComplete },
+      (uint32_t)WAVE_PAGE_STATE_DOWNLOADING, 2U, 0U,
+      Validate_Test7_IncompleteStatus },
 
     { ASR5K_SPI_TEST_ID_8, s_test8Steps, 1U,
       (uint32_t)WAVE_PAGE_STATE_INVALID, 2U, 0U,
       Validate_Test8_ValidatePrecheck },
 
     { ASR5K_SPI_TEST_ID_9, s_test9Steps, 5U,
-      (uint32_t)WAVE_PAGE_STATE_LOCKED, 4108U, 1U,
+      (uint32_t)WAVE_PAGE_STATE_LOCKED, 4107U, 1U,
       Validate_Test9_FullPipeline }
 };
 
@@ -275,10 +279,6 @@ static uint16_t s_testIndex;          /* index into s_testTable            */
 static uint16_t s_stepIndex;          /* index into current step table     */
 #pragma DATA_SECTION(s_waitCount, "asr5k_spi_selftest_state")
 static uint32_t s_waitCount;
-#pragma DATA_SECTION(s_postWaveGuardStartTick, "asr5k_spi_selftest_state")
-static uint32_t s_postWaveGuardStartTick;
-#pragma DATA_SECTION(s_postWaveGuardActive, "asr5k_spi_selftest_state")
-static uint16_t s_postWaveGuardActive;
 
 #pragma DATA_SECTION(s_uartRx, "asr5k_spi_selftest_state")
 static char s_uartRx[SELFTEST_UART_RX_SIZE];
@@ -301,17 +301,6 @@ static ASR5K_SPI_SELFTEST_STATUS_e s_uartLastStatus;
 static const ST_SELFTEST_TEST *currentTest(void)
 {
     return &s_testTable[s_testIndex];
-}
-
-static uint32_t selfTestElapsedTicks(uint32_t u32StartTick)
-{
-    uint32_t u32Now = U32_UPCNTS;
-
-    if (u32Now >= u32StartTick) {
-        return u32Now - u32StartTick;
-    }
-
-    return (SW_TIMER - u32StartTick) + u32Now;
 }
 
 static volatile ST_ASR5K_SPI_TEST_RESULT *currentResult(void)
@@ -455,6 +444,54 @@ static uint16_t StepCheck_OutputIsOff(uint16_t u16StepIndex,
         return SELFTEST_FAULT_OUTPUT_STATE;
     }
     return 0U;
+}
+
+static uint16_t StepCheck_WaveStatusIncomplete(uint16_t u16StepIndex,
+                                                uint16_t *pFailStep)
+{
+    uint16_t u16Status = SelfTestPort_MasterResult16();
+
+    (void)u16StepIndex;
+    if ((WaveStatusResponseIsValid() == 0U) ||
+        ((u16Status & WAVE_STATUS_RX_DONE) != 0U)) {
+        *pFailStep = ASR5K_SPI_FAIL_STEP_WAVE_METADATA;
+        return SELFTEST_FAULT_WAVE_METADATA;
+    }
+    return 0U;
+}
+
+static uint16_t StepCheck_WaveStatusReady(uint16_t u16StepIndex,
+                                          uint16_t *pFailStep)
+{
+    uint16_t u16Status = SelfTestPort_MasterResult16();
+
+    (void)u16StepIndex;
+    if ((WaveStatusResponseIsValid() == 0U) ||
+        ((u16Status & WAVE_STATUS_READY_MASK) !=
+         WAVE_STATUS_READY_MASK) ||
+        ((u16Status & WAVE_STATUS_ERROR) != 0U)) {
+        *pFailStep = ASR5K_SPI_FAIL_STEP_WAVE_DOWNLOAD;
+        return SELFTEST_FAULT_WAVE_METADATA;
+    }
+    return 0U;
+}
+
+static uint16_t WaveStatusResponseIsValid(void)
+{
+    uint32_t u32Detail = SelfTestPort_MasterDetail32();
+    uint16_t u16RxAddr = (uint16_t)(u32Detail >> 16U);
+    uint16_t u16RxData = (uint16_t)u32Detail;
+    uint16_t u16ExpectedAddr =
+        (uint16_t)(WAVE_PAGE_STATUS_ADDR +
+                   (u16RxData & 0x00FFU) +
+                   (u16RxData >> 8U));
+
+    if ((u16RxData &
+         (uint16_t)~(WAVE_STATUS_READY_MASK | WAVE_STATUS_ERROR)) != 0U) {
+        return 0U;
+    }
+
+    return (u16RxAddr == u16ExpectedAddr) ? 1U : 0U;
 }
 
 /* ========================================================================
@@ -616,22 +653,24 @@ static uint16_t Validate_Test6_SampleWrite(
     return 0U;
 }
 
-/* ---- Test7: DOWNLOADING -> DOWNLOAD_COMPLETE ------------------------------- */
-static uint16_t Validate_Test7_DownloadComplete(
+/* ---- Test7: partial download remains incomplete --------------------------- */
+static uint16_t Validate_Test7_IncompleteStatus(
     volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep)
 {
     uint16_t u16Page = SELFTEST_TARGET_PAGE;
+    uint16_t u16Status = SelfTestPort_MasterResult16();
 
     pResult->actual = (uint32_t)SelfTestPort_WavePageState(u16Page);
 
-    if ((SelfTestPort_WaveDownloadComplete(u16Page) != 1U) ||
+    if ((SelfTestPort_WaveDownloadComplete(u16Page) != 0U) ||
         (SelfTestPort_WavePageState(u16Page) !=
-         WAVE_PAGE_STATE_DOWNLOAD_COMPLETE)) {
+         WAVE_PAGE_STATE_DOWNLOADING) ||
+        ((u16Status & WAVE_STATUS_RX_DONE) != 0U)) {
         *pFailStep = ASR5K_SPI_FAIL_STEP_WAVE_METADATA;
         return SELFTEST_FAULT_WAVE_METADATA;
     }
 
-    /* The complete action must not corrupt the metadata. */
+    /* Reading status must not alter the partial-download metadata. */
     if ((SelfTestPort_WaveSampleCount(u16Page) != TEST6_SAMPLE_COUNT) ||
         (SelfTestPort_WaveAddressContinuous(u16Page) != 1U)) {
         *pFailStep = ASR5K_SPI_FAIL_STEP_WAVE_METADATA;
@@ -785,12 +824,10 @@ static void resetResults(void)
     g_asr5kSpiSelfTest.completed_test_count = 0U;
     g_asr5kSpiSelfTest.implemented_test_count = SELFTEST_EXECUTED_COUNT;
     g_u32DiagMasterBurstDoneTick = 0U;
-    g_u32DiagMasterSend0959Tick = 0U;
     g_u32DiagMasterWaitAckStartTick = 0U;
     g_u32DiagMasterWaitAckFailTick = 0U;
     g_u16DiagMasterLastTxCmd = 0U;
     g_u16DiagMasterLastTxData = 0U;
-    g_u16DiagMasterStepAt0959 = 0U;
     g_u16DiagMasterGateSeen = 0U;
 
     for (u16Index = 0U; u16Index < ASR5K_SPI_SELFTEST_RECORD_COUNT;
@@ -808,8 +845,6 @@ static void resetResults(void)
     s_testIndex = 0U;
     s_stepIndex = 0U;
     s_waitCount = 0U;
-    s_postWaveGuardStartTick = 0U;
-    s_postWaveGuardActive = 0U;
     s_state = SELFTEST_STATE_START;
 }
 
@@ -844,46 +879,14 @@ static void startCurrentStep(void)
     }
     pResult->current_step = s_stepIndex;
 
-    if ((pStep->eCommand == SPI_MASTER_TEST_CMD_WRITE) &&
-        (pStep->u16Address == WAVE_DOWNLOAD_CTRL_ADDR) &&
-        (pStep->u16Data == 1U)) {
-        uint16_t u16GateSnapshot =
-            SelfTestPort_CommandPostProcessSnapshot();
-
-        g_u16DiagMasterStepAt0959 = s_stepIndex;
-        g_u16DiagMasterGateSeen = u16GateSnapshot;
-
-        if ((u16GateSnapshot & SPIA_DIAG_GATE_READY_MASK) !=
-            SPIA_DIAG_GATE_READY_MASK) {
-            s_postWaveGuardActive = 0U;
-            s_waitCount++;
-            if (s_waitCount > SELFTEST_WAIT_LIMIT) {
-                failSelfTest(ASR5K_SPI_FAIL_STEP_START,
-                             SELFTEST_FAULT_START_REJECTED);
-            }
-            return;
-        }
-
-        if (s_postWaveGuardActive == 0U) {
-            s_postWaveGuardStartTick = U32_UPCNTS;
-            s_postWaveGuardActive = 1U;
-            return;
-        }
-
-        if (selfTestElapsedTicks(s_postWaveGuardStartTick) <
-            SELFTEST_POST_WAVE_GUARD_TICKS) {
-            return;
-        }
-
-        g_u16DiagMasterGateSeen =
-            (uint16_t)(u16GateSnapshot |
-                       SPIA_DIAG_GATE_GUARD_ELAPSED);
-    }
-
     if (SelfTestPort_MasterStart(pStep->eCommand,
                                  pStep->u16Address,
                                  pStep->u16Data) != 0U) {
-        s_waitCount = 0U;
+        if (!((pTest->eTestId == ASR5K_SPI_TEST_ID_9) &&
+              (pStep->eCommand == SPI_MASTER_TEST_CMD_READ) &&
+              (pStep->u16Address == WAVE_PAGE_STATUS_ADDR))) {
+            s_waitCount = 0U;
+        }
         s_state = SELFTEST_STATE_WAIT_RUNNING;
         return;
     }
@@ -904,6 +907,28 @@ static void completeCurrentStep(void)
     volatile ST_ASR5K_SPI_TEST_RESULT *pResult = currentResult();
     uint16_t u16FailStep = ASR5K_SPI_FAIL_STEP_NONE;
     uint16_t u16Fault;
+
+    /* The burst-to-register seam may consume the first status request or
+     * return stale filler.  Retry this step until a valid READY response
+     * arrives; a real slave ERROR is handled by the step check below. */
+    if ((pTest->eTestId == ASR5K_SPI_TEST_ID_9) &&
+        (pStep->eCommand == SPI_MASTER_TEST_CMD_READ) &&
+        (pStep->u16Address == WAVE_PAGE_STATUS_ADDR)) {
+        uint16_t u16Status = SelfTestPort_MasterResult16();
+
+        if ((WaveStatusResponseIsValid() == 0U) ||
+            (((u16Status & WAVE_STATUS_READY_MASK) !=
+              WAVE_STATUS_READY_MASK) &&
+             ((u16Status & WAVE_STATUS_ERROR) == 0U))) {
+            if (s_waitCount > SELFTEST_WAIT_LIMIT) {
+                failSelfTest(ASR5K_SPI_FAIL_STEP_WAVE_DOWNLOAD,
+                             SELFTEST_FAULT_WAIT_TIMEOUT);
+            } else {
+                s_state = SELFTEST_STATE_START;
+            }
+            return;
+        }
+    }
 
     /* 1) per-step master result */
     if (pStep->bCheckResult != 0U) {

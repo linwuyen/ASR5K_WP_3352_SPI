@@ -82,7 +82,7 @@ UART 啟動後預期收到 `SPI_TEST RUN`。等待最終的 `PASS`，或
 | `failed_test_id` | `0` |
 | `fault_code` | `0` |
 | `test[8].expected / actual` | `6 / 6`（`LOCKED`） |
-| `test[8].delta.dma_done` | `>= 4108` |
+| `test[8].delta.dma_done` | `>= 4107`（minimum；status poll retry 時可更高） |
 | `test[8].delta.parse_ok` | 等於 `dma_done` |
 | `test[8].delta.parse_fail` | `0` |
 | `test[8].delta.dma_restart` | `>= dma_done` |

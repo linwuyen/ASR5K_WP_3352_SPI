@@ -17,7 +17,6 @@
 // ============================================================================
 #define WAIT_SLAVE_TICKS 0U
 #define WAIT_IDLE_TICKS  1000U    // 20us inter-packet guard band under 50MHz SW_TIMER
-#define WAVE_POST_PROCESS_TICKS T_1MS
 #define SPI_TIMEOUT_LIMIT 250000U // 5ms anti-deadlock timeout threshold
 #define SPI_RAW_FRAME_STRESS_ADDR Output_ON_OFF_spi_addr
 
@@ -40,12 +39,10 @@ volatile u16 g_u16SpiMasterWaveRam[SPI_SINE_TABLE_SIZE];
 
 /* B01D master-side timing and gate diagnostics. */
 volatile u32 g_u32DiagMasterBurstDoneTick;
-volatile u32 g_u32DiagMasterSend0959Tick;
 volatile u32 g_u32DiagMasterWaitAckStartTick;
 volatile u32 g_u32DiagMasterWaitAckFailTick;
 volatile u16 g_u16DiagMasterLastTxCmd;
 volatile u16 g_u16DiagMasterLastTxData;
-volatile u16 g_u16DiagMasterStepAt0959;
 volatile u16 g_u16DiagMasterGateSeen;
 
 ST_SPI_MASTER_CONTROL spiA_master = {
@@ -263,6 +260,7 @@ static void onBlockReadComplete(void);
 static void onBlockWrRdComplete(void);
 static void onPollSlaveComplete(u16 u16RxAddr, u16 u16RxData);
 static void drainSpiMasterRxFifo(u32 u32BaseAddr);
+static void completeWaveStatusPollMiss(ST_SPI_MASTER *pstInst);
 static void prepareSineTable(void);
 static void startBlockStatusPoll(void);
 static void recordSpiMasterSuccess(u16 u16Count);
@@ -505,9 +503,7 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
       // Log TX Metric in Driver comm_diag
       spiA_master.stDiag.stDriver.stComm.u32TxTotal++;
 
-      if ((u16TxCmd == WAVE_DOWNLOAD_CTRL_ADDR) &&
-          (u16TxData == 1U)) {
-        g_u32DiagMasterSend0959Tick = U32_UPCNTS;
+      if (u16TxCmd == WAVE_PAGE_STATUS_ADDR) {
         g_u16DiagMasterLastTxCmd = u16TxCmd;
         g_u16DiagMasterLastTxData = u16TxData;
       }
@@ -517,8 +513,7 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
                           u16TxData);
 
       pstInst->eState = SPI_CMD_WAIT_ACK;
-      if ((u16TxCmd == WAVE_DOWNLOAD_CTRL_ADDR) &&
-          (u16TxData == 1U)) {
+      if (u16TxCmd == WAVE_PAGE_STATUS_ADDR) {
         g_u32DiagMasterWaitAckStartTick = U32_UPCNTS;
       }
     }
@@ -536,11 +531,12 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
     } else {
       pstInst->u32TimeoutCnt++;
       if (pstInst->u32TimeoutCnt > SPI_TIMEOUT_LIMIT) {
-        s_stSpiApp.u32StressFailCnt++;
         if (pstInst->stActiveTx.stTxPacket.stPack.u16Address ==
-            WAVE_DOWNLOAD_CTRL_ADDR) {
-          g_u32DiagMasterWaitAckFailTick = U32_UPCNTS;
+            WAVE_PAGE_STATUS_ADDR) {
+          completeWaveStatusPollMiss(pstInst);
+          break;
         }
+        s_stSpiApp.u32StressFailCnt++;
         reportMasterError(SPIA_FAULT_SOURCE_DRIVER, (u16)SPIA_DRV_FAULT_ACK_TIMEOUT);
         recoverSpiMaster(pstInst);
       }
@@ -580,11 +576,12 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
     } else {
       pstInst->u32TimeoutCnt++;
       if (pstInst->u32TimeoutCnt > SPI_TIMEOUT_LIMIT) {
-        s_stSpiApp.u32StressFailCnt++;
         if (pstInst->stActiveTx.stTxPacket.stPack.u16Address ==
-            WAVE_DOWNLOAD_CTRL_ADDR) {
-          g_u32DiagMasterWaitAckFailTick = U32_UPCNTS;
+            WAVE_PAGE_STATUS_ADDR) {
+          completeWaveStatusPollMiss(pstInst);
+          break;
         }
+        s_stSpiApp.u32StressFailCnt++;
         reportMasterError(SPIA_FAULT_SOURCE_DRIVER, (u16)SPIA_DRV_FAULT_DATA_TIMEOUT);
         recoverSpiMaster(pstInst);
       }
@@ -721,12 +718,7 @@ void runSpiMasterCommunication(ST_SPI_MASTER *pstInst) {
         g_u32DiagMasterBurstDoneTick = U32_UPCNTS;
       }
 
-      /* Wave samples are parsed by SPIB in bounded background chunks.
-       * Do not start WAVE_DOWNLOAD_COMPLETE until that deferred work and
-       * post-wave DMA handoff have finished. */
-      pstInst->u32IdleLimitTicks =
-          (pstInst->stBlockTx.u16WaveMode == 2U) ?
-          WAVE_POST_PROCESS_TICKS : WAIT_IDLE_TICKS;
+      pstInst->u32IdleLimitTicks = WAIT_IDLE_TICKS;
       pstInst->eState = SPI_CMD_WAIT_IDLE;
       if (pstInst->stBlockTx.pfCallback != 0) {
         pstInst->stBlockTx.pfCallback();
@@ -1185,6 +1177,14 @@ static void onManualReadComplete(u16 u16RxAddr, u16 u16RxData) {
     s_stSpiApp.u16LastResult = u16RxData;
     s_stSpiApp.eState = SPI_APP_STATE_IDLE;
   } else {
+    if (s_stSpiApp.u16TestAddr == WAVE_PAGE_STATUS_ADDR) {
+      /* The first post-burst register response may still be transport
+       * filler.  Return a poll miss to the self-test loop without latching
+       * a protocol fault; the raw frame remains in stTest.u32Detail. */
+      completeWaveStatusPollMiss(&s_stSpiMaster);
+      return;
+    }
+
     s_stSpiApp.u32StressFailCnt++;
     s_stSpiApp.eTestState = SPI_MASTER_TEST_ERROR;
     s_stSpiApp.u16LastResult = u16RxData;
@@ -1216,9 +1216,6 @@ static void onManualWriteComplete(u16 u16RxAddr, u16 u16RxData) {
     s_stSpiApp.u32StressFailCnt++;
     s_stSpiApp.eTestState = SPI_MASTER_TEST_ERROR;
     s_stSpiApp.u16LastResult = u16RxData;
-    if (s_stSpiApp.u16TestAddr == WAVE_DOWNLOAD_CTRL_ADDR) {
-      g_u32DiagMasterWaitAckFailTick = U32_UPCNTS;
-    }
     reportMasterError(SPIA_FAULT_SOURCE_PROTOCOL, (u16)SPIA_PROT_FAULT_CHECKSUM);
     recoverSpiMaster(&s_stSpiMaster);
   }
@@ -1226,6 +1223,11 @@ static void onManualWriteComplete(u16 u16RxAddr, u16 u16RxData) {
 
 static void onBlockWriteComplete(void) {
   if (s_stSpiMaster.stBlockTx.u16WaveMode == 2U) {
+    /* The burst tail is MISO filler, not a normal register response.
+     * Start post-burst status polling from clean master FIFOs. */
+    drainSpiMasterRxFifo(s_stSpiMaster.u32SpiBaseAddr);
+    SPI_resetRxFIFO(s_stSpiMaster.u32SpiBaseAddr);
+    SPI_resetTxFIFO(s_stSpiMaster.u32SpiBaseAddr);
     s_stSpiApp.eTestState = SPI_MASTER_TEST_DONE;
     s_stSpiApp.eState = SPI_APP_STATE_IDLE;
     return;
@@ -1286,6 +1288,19 @@ static void drainSpiMasterRxFifo(u32 u32BaseAddr) {
   while (SPI_getRxFIFOStatus(u32BaseAddr) > SPI_FIFO_RXEMPTY) {
     SPI_readDataNonBlocking(u32BaseAddr);
   }
+}
+
+static void completeWaveStatusPollMiss(ST_SPI_MASTER *pstInst) {
+  drainSpiMasterRxFifo(pstInst->u32SpiBaseAddr);
+  SPI_resetRxFIFO(pstInst->u32SpiBaseAddr);
+  SPI_resetTxFIFO(pstInst->u32SpiBaseAddr);
+  pstInst->u32TimeoutCnt = 0U;
+  pstInst->u32WaitSlaveCnt = U32_UPCNTS;
+  pstInst->u32IdleLimitTicks = WAIT_IDLE_TICKS;
+  pstInst->eState = SPI_CMD_WAIT_IDLE;
+  s_stSpiApp.eTestState = SPI_MASTER_TEST_DONE;
+  s_stSpiApp.u16LastResult = 0U;
+  s_stSpiApp.eState = SPI_APP_STATE_IDLE;
 }
 
 static void prepareSineTable(void) {

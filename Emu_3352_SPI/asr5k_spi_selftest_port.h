@@ -32,10 +32,10 @@
 
 /* ========================================================================
  * Wave-download register map
- * Address macros (WAVE_PAGE_SELECT_ADDR / WAVE_DOWNLOAD_CTRL_ADDR /
- * WAVE_PAGE_STATUS_ADDR / WAVE_VALIDATE_ADDR / WAVE_ACTIVATE_ADDR) always
- * come from project headers wave_download.h / cmd_id.h.  This file adds
- * no fallback, to stay in sync with the protocol definition.
+ * Address macros (WAVE_PAGE_SELECT_ADDR / WAVE_PAGE_STATUS_ADDR /
+ * WAVE_VALIDATE_ADDR / WAVE_ACTIVATE_ADDR) always come from project
+ * headers wave_download.h / cmd_id.h.  This file adds no fallback, to stay
+ * in sync with the protocol definition.
  * ======================================================================== */
 
 #define WAVE_WINDOW_BASE_ADDR      0x3000U  /* Test6: sample write window    */

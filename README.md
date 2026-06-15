@@ -43,9 +43,9 @@ runDebug();              // (_FLASH) SCIA Modbus/debug 埠
 | **4** | 16 字區塊連續寫入 | Block 寫入 | 寫入 16 words,checksum 比對 | Block index/progress/status |
 | **5** | 波形分頁選擇 | 寫 `0x0958` | selected page=1、metadata 歸零、狀態進入 `DOWNLOADING` | Page select metadata |
 | **6** | 波形樣本部分寫入 (4 筆) | 窗口 `0x3000~` 寫入 | sample_count=4、last_addr 正確、逐筆讀回比對 | Window 解析 page/index |
-| **7** | 下載完成轉態 | 寫 `0x0959` | `DOWNLOADING → DOWNLOAD_COMPLETE`,metadata 不被破壞 | Complete 轉態 |
+| **7** | 不完整頁狀態防護 | 讀 `0x095A` | 4 筆 partial page 保持 `DOWNLOADING`，不得出現 `RX_DONE` | Incomplete status guard |
 | **8** | Validate 把關 (**負向測試**) | 寫 `0x0960` | 僅 4/4096 樣本 → validator 必須拒絕為 `INVALID`,且 `OUTPUT_ON` 維持 OFF | Validator gatekeeping |
-| **9** | 完整 4096 下載管線 | 連續 burst | select → 4096 download → complete → validate(`VALID`) → activate(`LOCKED`) | 長傳輸零 DMA 遺失、全樣本比對、最終 `LOCKED` |
+| **9** | 完整 4096 下載管線 | 連續 burst + status poll | select → 4096 download → status(`REG_READY \| RX_DONE`) → validate(`VALID`) → activate(`LOCKED`) | 長傳輸零 DMA 遺失、全樣本比對、DMA delta minimum `>=4107`、最終 `LOCKED` |
 
 > Test8 之所以為負向測試:Test6 只寫入 4 筆樣本即停,Test8 故意對這個不完整的頁下 validate,確認 validator 會以「樣本數不足」拒絕,並且**驗證流程絕不會啟動功率級 (Output 維持 OFF)**。
 

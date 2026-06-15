@@ -12,14 +12,6 @@
 #ifndef WAVE_PAGE_STATUS_ADDR
 #define WAVE_PAGE_STATUS_ADDR       0x095A
 #endif
-/* Deprecated compatibility alias.
- * 0x0959 Download Complete is no longer a protocol step.  Any legacy code
- * that still names WAVE_DOWNLOAD_CTRL_ADDR is routed to the status register
- * so the master must observe slave-side RX_DONE/REG_READY instead of sending
- * an extra post-burst completion command. */
-#ifndef WAVE_DOWNLOAD_CTRL_ADDR
-#define WAVE_DOWNLOAD_CTRL_ADDR     WAVE_PAGE_STATUS_ADDR
-#endif
 #ifndef WAVE_VALIDATE_ADDR
 #define WAVE_VALIDATE_ADDR          0x0960
 #endif

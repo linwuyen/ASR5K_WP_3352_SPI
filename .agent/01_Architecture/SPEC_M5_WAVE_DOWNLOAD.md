@@ -79,8 +79,7 @@ Production Legacy register writes:
 | Address | Name | Write data | Purpose |
 |---|---|---|---|
 | `0x0958` | `WAVE_PAGE_SELECT` | `0..255` | Select download page. |
-| `0x0959` | `WAVE_DOWNLOAD_COMPLETE` | `1` | Declare transfer complete. |
-| `0x095A` | `WAVE_PAGE_STATUS` | page/query value | Read page state through the existing Legacy response path. |
+| `0x095A` | `WAVE_PAGE_STATUS` | `0` | Read `REG_READY`, `RX_DONE`, and `ERROR` through the existing Legacy response path. |
 | `0x095B` | `WAVE_BURST_BEGIN` | `4096` | Pre-arm the verified block-DMA burst path. |
 | `0x0960` | `WAVE_VALIDATE` | `1` | Validate the selected page. |
 | `0x0961` | `WAVE_ACTIVATE` | `1` | Activate and lock a valid selected page. |
@@ -133,7 +132,7 @@ The lossless full-page sequence is:
 2 x (0xFFFF, 0x0000) guard frames
 0x3000..0x3FFF = 4096 sample frames
 1 x (0xFFFF, 0x0000) trailing flush frame
-0x0959 = 1
+0x095A = 0 until REG_READY | RX_DONE
 0x0960 = 1
 0x0961 = 1
 ```
@@ -183,10 +182,12 @@ While a valid non-locked page is selected, writes to `0x3000..0x3FFF` must:
 - update sample count, last address, and address-continuity metadata;
 - avoid direct physical Flash writes.
 
-### REQ-M5-003 Download Complete
+### REQ-M5-003 Burst Finalize and Status
 
-`0x0959 = 1` marks the selected page `DOWNLOAD_COMPLETE`. It must not directly
-mark the page `VALID` or `LOCKED`.
+Successful burst finalization marks the selected page `DOWNLOAD_COMPLETE` and
+sets `RX_DONE`. The master reads `0x095A` until `REG_READY | RX_DONE` is
+observed without `ERROR`. Status polling must not directly mark the page
+`VALID` or `LOCKED`.
 
 ### REQ-M5-004 Validation
 

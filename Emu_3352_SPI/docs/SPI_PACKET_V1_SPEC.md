@@ -375,7 +375,114 @@ Allocation rules:
 
 ---
 
-## 10. (reserved)
+## 10. Streaming Parser / Incremental Feed Parser (A2)
+
+### 10.1 Purpose
+
+The streaming parser consumes a frame **one 16-bit word at a time**, for callers
+that receive words incrementally (e.g. a future SPIB RX path) and cannot present
+the whole frame as a single buffer. It produces the same result as the
+total-buffer parser (`SpiPacketV1_ParseWords`) for the same bytes, with identical
+CRC coverage.
+
+### 10.2 Non-goals
+
+- Not wired to any SPIB runtime / DMA (A2 stays pure-C; see 10.10).
+- No command dispatch, no legacy register protocol, no global/`extern` state.
+- No `malloc`: all state (including the payload buffer) lives in a
+  caller-owned `SpiPacketV1_StreamParser`. The total-buffer parser is unchanged.
+
+### 10.3 State machine
+
+```
+WAIT_HEADER --magic 0xA55A--> WAIT_COMMAND --> WAIT_LENGTH --+
+   ^  ^                                                       |
+   |  |                                       N == 0          | N > 0
+   |  |                                          v            v
+   |  +----------------------------------- WAIT_CRC <--- WAIT_PAYLOAD (xN)
+   |   (CRC ok: commit + auto-reset)            |  (collect N payload words)
+   |   (CRC mismatch / length>MAX / finalize-mid: reset)
+   +--- bad header stays here (resync)
+```
+
+`SpiPacketV1_StreamFeedWord` returns `IN_PROGRESS` for every accepted word until
+the frame completes (`OK`) or an error is detected.
+
+### 10.4 Validation order (per word)
+
+1. **NULL check** — `parser` and `out_packet` must be non-NULL, every call
+   -> `ERR_NULL_ARG` (parser state untouched, word not consumed).
+2. **WAIT_HEADER** — word must equal `0xA55A`, else `ERR_BAD_HEADER` (stays in
+   WAIT_HEADER for resync; CRC not started).
+3. **WAIT_LENGTH** — declared `N` must be `<= MAX_PAYLOAD_WORDS` (4096), else
+   `ERR_PAYLOAD_TOO_LARGE` (reset).
+4. **WAIT_CRC** — received word must equal the running CRC, else
+   `ERR_CRC_MISMATCH` (reset).
+
+This mirrors the total-buffer order (header → length-sanity → CRC). There is no
+explicit "exact length" gate: the streaming parser counts exactly `N` payload
+words by construction, so length-mismatch instead surfaces at **finalize** time
+(10.8) as `ERR_TRUNCATED`.
+
+### 10.5 CRC running calculation
+
+The CRC is accumulated incrementally with `SpiPacketCrc16_UpdateWord`, starting
+from `0xFFFF` at the header word and updated for **Header, Command ID, Data
+Length, and each Payload word** — the CRC word itself is excluded. This is the
+exact same span and order as `SpiPacketCrc16_ComputeWords(words, 3 + N)` used by
+the total-buffer parser, so the running value at WAIT_CRC equals the
+total-buffer CRC bit-for-bit.
+
+### 10.6 Completion behavior
+
+When the CRC word matches, the parser **commits** the result to `out_packet`
+(`cmdId`, `payloadWords`, `payload`, `crc`) and returns `OK`. `out_packet` is
+written **only** on `OK` (never on `IN_PROGRESS` or errors). `out_packet->payload`
+aliases the parser's internal payload buffer (NULL when `payloadWords == 0`) and
+stays valid until the next packet's payload overwrites it. After committing, the
+parser **auto-resets** to WAIT_HEADER so back-to-back frames need no manual reset.
+
+### 10.7 Error / reset behavior
+
+| Condition                | Result                    | Parser state after |
+|--------------------------|---------------------------|--------------------|
+| bad header (WAIT_HEADER)  | `ERR_BAD_HEADER`          | stays WAIT_HEADER (resync-ready) |
+| declared `N > 4096`       | `ERR_PAYLOAD_TOO_LARGE`   | reset to WAIT_HEADER |
+| CRC word mismatch         | `ERR_CRC_MISMATCH`        | reset to WAIT_HEADER |
+| `parser`/`out_packet` NULL | `ERR_NULL_ARG`           | unchanged (no-op) |
+
+After any reset/resync the parser is immediately ready for a fresh header.
+
+### 10.8 Finalize / truncated behavior
+
+`SpiPacketV1_StreamFinalize` ends a stream (e.g. end of transfer):
+
+- parser idle (WAIT_HEADER) -> `OK` (nothing pending).
+- parser mid-frame (WAIT_COMMAND / WAIT_LENGTH / WAIT_PAYLOAD / WAIT_CRC)
+  -> `ERR_TRUNCATED`, then reset to WAIT_HEADER.
+- `parser == NULL` -> `ERR_NULL_ARG`.
+
+### 10.9 Relation to the total-buffer parser
+
+Same wire format, same `0xA55A` header, same `MAX_PAYLOAD_WORDS`, same CRC16
+coverage, and result types are shared (`SPI_PACKET_V1_RESULT_e`,
+`ST_SPI_PACKET_V1`). For any frame, feeding it word-by-word and parsing it as a
+buffer yield identical `cmdId` / `payloadWords` / payload contents (verified by
+the A2 cross-check test). The only added status code is
+`SPI_PACKET_V1_IN_PROGRESS` (appended to the enum; existing values unchanged).
+The total-buffer parser/encoder behavior is **not modified** by A2.
+
+> **Naming note.** The earlier API sketch used `SpiPacketV1_Status` /
+> `SpiPacketV1_Packet`; the implementation reuses the existing module types
+> `SPI_PACKET_V1_RESULT_e` / `ST_SPI_PACKET_V1` for consistency rather than
+> renaming established names.
+
+### 10.10 Future SPIB runtime note
+
+A2 is still **pure-C** with no SPIB DMA integration. A future runtime adapter may
+drive `SpiPacketV1_StreamFeedWord` from the RX path, but that glue lives in a
+separate translation unit and must obey the integration rules in section 12
+(no legacy-path regression, explicit mode switch, re-run B01F baseline).
 
 ---
 
@@ -485,6 +592,23 @@ dictated by the validation order in section 7.
 |------------------------------------------------------|-------|
 | sentinel-fill `outPkt`, parse CRC-corrupted frame    | returns `ERR_CRC_MISMATCH` |
 | after that failure                                    | `cmdId != frame's cmd`, and `cmdId/payloadWords == 0`, `payload == NULL` |
+
+### 11.2 A2 — Streaming Parser Matrix
+
+Streaming parser cases in `spi_packet_v1_test.c` (each a group of assertions),
+per the state machine and rules in section 10:
+
+| Group                       | Coverage |
+|-----------------------------|----------|
+| Basic success               | empty / 3-word / 4096-word streamed word-by-word; `IN_PROGRESS` until final word; cmd `0x0000` and `0xFFFF` |
+| Back-to-back                | two packets, no manual reset between them (auto-reset) |
+| Header resync               | `0x0000` then `0xFFFF` -> `ERR_BAD_HEADER`, then a valid packet -> `OK` |
+| Magic in payload            | payload word `0xA55A` stays payload, not a new header |
+| Malformed stream            | length 4097 -> `ERR_PAYLOAD_TOO_LARGE`; CRC mismatch -> `ERR_CRC_MISMATCH`; each followed by a valid packet -> `OK` (reset proven) |
+| Finalize / truncated        | finalize after header / +command / +length / partial payload / payload-but-no-CRC -> `ERR_TRUNCATED`; idle finalize -> `OK`; valid packet after finalize error -> `OK` |
+| Reset behavior              | partial feed, `StreamReset`, then a valid packet -> `OK` |
+| NULL defensive              | `Init/Reset(NULL)` no crash; `FeedWord(NULL,..)` / `FeedWord(..,NULL)` / `Finalize(NULL)` -> `ERR_NULL_ARG` |
+| Cross-check vs total-buffer | same frame through `ParseWords` and the stream yields identical `cmdId` / `payloadWords` / payload |
 
 The harness (its `main()` and `<stdio.h>` use) is compiled only when
 `SPI_PACKET_V1_HOST_TEST` is defined. This guard means that if

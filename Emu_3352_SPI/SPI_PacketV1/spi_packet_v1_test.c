@@ -663,6 +663,369 @@ static void test_a1_failure_output_safety(void)
     check(pkt.payload == NULL,         "A1 safety: failure clears payload pointer");
 }
 
+/* ================================================================== */
+/* A2 - Streaming / incremental-feed parser                           */
+/* ================================================================== */
+
+/*
+ * Feed an encoded frame word-by-word into a stream parser.
+ * If prefix_in_progress != NULL, *prefix_in_progress is set to 1 iff every
+ * word before the last returned IN_PROGRESS. Returns the final FeedWord result.
+ */
+static SPI_PACKET_V1_RESULT_e stream_feed_frame(SpiPacketV1_StreamParser *p,
+                                                const uint16_t           *frame,
+                                                uint16_t                  len,
+                                                ST_SPI_PACKET_V1         *out,
+                                                int                      *prefix_in_progress)
+{
+    SPI_PACKET_V1_RESULT_e r = SPI_PACKET_V1_IN_PROGRESS;
+    int prefix_ok = 1;
+    uint16_t i;
+
+    for (i = 0U; i < len; ++i)
+    {
+        r = SpiPacketV1_StreamFeedWord(p, frame[i], out);
+        if (((i + 1U) < len) && (r != SPI_PACKET_V1_IN_PROGRESS))
+        {
+            prefix_ok = 0;
+        }
+    }
+    if (prefix_in_progress != 0)
+    {
+        *prefix_in_progress = prefix_ok;
+    }
+    return r;
+}
+
+/* A2-1: basic streaming success (empty / 3-word / 4096 / cmd bounds). */
+static void test_a2_basic_success(void)
+{
+    static SpiPacketV1_StreamParser sp;
+    static const uint16_t p3[3] = { 0xDEADU, 0xBEEFU, 0x0042U };
+    static uint16_t bigPayload[SPI_PACKET_V1_MAX_PAYLOAD_WORDS];
+    static uint16_t bigFrame[SPI_PACKET_V1_MAX_PAYLOAD_WORDS
+                             + SPI_PACKET_V1_OVERHEAD_WORDS];
+    uint16_t frame[16];
+    uint16_t len = 0U;
+    ST_SPI_PACKET_V1 out;
+    SPI_PACKET_V1_RESULT_e r;
+    int prefix;
+    uint16_t i;
+
+    /* Empty payload. */
+    SpiPacketV1_StreamInit(&sp);
+    (void)SpiPacketV1_Encode(0x00ABU, NULL, 0U, frame, 16U, &len);
+    r = stream_feed_frame(&sp, frame, len, &out, &prefix);
+    check(r == SPI_PACKET_V1_OK,    "A2 stream empty: completes OK");
+    check(prefix == 1,              "A2 stream empty: IN_PROGRESS until final word");
+    check(out.cmdId == 0x00ABU,     "A2 stream empty: cmd id");
+    check(out.payloadWords == 0U,   "A2 stream empty: payloadWords 0");
+    check(out.payload == NULL,      "A2 stream empty: payload NULL");
+
+    /* 3-word payload. */
+    SpiPacketV1_StreamInit(&sp);
+    (void)SpiPacketV1_Encode(0x0101U, p3, 3U, frame, 16U, &len);
+    r = stream_feed_frame(&sp, frame, len, &out, &prefix);
+    check(r == SPI_PACKET_V1_OK,    "A2 stream 3w: completes OK");
+    check(prefix == 1,              "A2 stream 3w: IN_PROGRESS until final word");
+    check(out.cmdId == 0x0101U,     "A2 stream 3w: cmd id");
+    check(out.payloadWords == 3U,   "A2 stream 3w: payloadWords 3");
+    check((out.payload != NULL) && (out.payload[0] == 0xDEADU)
+              && (out.payload[1] == 0xBEEFU) && (out.payload[2] == 0x0042U),
+          "A2 stream 3w: payload preserved");
+
+    /* 4096-word payload. */
+    for (i = 0U; i < SPI_PACKET_V1_MAX_PAYLOAD_WORDS; ++i)
+    {
+        bigPayload[i] = (uint16_t)(i & 0xFFFFU);
+    }
+    bigPayload[0] = 0xF00DU;
+    bigPayload[SPI_PACKET_V1_MAX_PAYLOAD_WORDS - 1U] = 0xCAFEU;
+    SpiPacketV1_StreamInit(&sp);
+    (void)SpiPacketV1_Encode(0x0123U, bigPayload,
+                             SPI_PACKET_V1_MAX_PAYLOAD_WORDS, bigFrame,
+                             (uint16_t)(SPI_PACKET_V1_MAX_PAYLOAD_WORDS
+                                        + SPI_PACKET_V1_OVERHEAD_WORDS),
+                             &len);
+    r = stream_feed_frame(&sp, bigFrame, len, &out, NULL);
+    check(r == SPI_PACKET_V1_OK,    "A2 stream 4096: completes OK");
+    check(out.payloadWords == SPI_PACKET_V1_MAX_PAYLOAD_WORDS,
+          "A2 stream 4096: payloadWords 4096");
+    check((out.payload != NULL) && (out.payload[0] == 0xF00DU)
+              && (out.payload[SPI_PACKET_V1_MAX_PAYLOAD_WORDS - 1U] == 0xCAFEU),
+          "A2 stream 4096: first/last preserved");
+
+    /* command_id = 0x0000. */
+    SpiPacketV1_StreamInit(&sp);
+    (void)SpiPacketV1_Encode(0x0000U, p3, 3U, frame, 16U, &len);
+    r = stream_feed_frame(&sp, frame, len, &out, NULL);
+    check((r == SPI_PACKET_V1_OK) && (out.cmdId == 0x0000U),
+          "A2 stream cmd 0x0000: OK + cmd id");
+
+    /* command_id = 0xFFFF. */
+    SpiPacketV1_StreamInit(&sp);
+    (void)SpiPacketV1_Encode(0xFFFFU, p3, 3U, frame, 16U, &len);
+    r = stream_feed_frame(&sp, frame, len, &out, NULL);
+    check((r == SPI_PACKET_V1_OK) && (out.cmdId == 0xFFFFU),
+          "A2 stream cmd 0xFFFF: OK + cmd id");
+}
+
+/* A2-2: back-to-back packets with no manual reset (auto-reset). */
+static void test_a2_back_to_back(void)
+{
+    static SpiPacketV1_StreamParser sp;
+    static const uint16_t pa[2] = { 0x1111U, 0x2222U };
+    static const uint16_t pb[1] = { 0x3333U };
+    uint16_t frameA[8];
+    uint16_t frameB[8];
+    uint16_t lenA = 0U;
+    uint16_t lenB = 0U;
+    ST_SPI_PACKET_V1 out;
+    SPI_PACKET_V1_RESULT_e r;
+
+    SpiPacketV1_StreamInit(&sp);
+    (void)SpiPacketV1_Encode(0x0201U, pa, 2U, frameA, 8U, &lenA);
+    (void)SpiPacketV1_Encode(0x0202U, pb, 1U, frameB, 8U, &lenB);
+
+    r = stream_feed_frame(&sp, frameA, lenA, &out, NULL);
+    check(r == SPI_PACKET_V1_OK,  "A2 b2b: packet A completes OK");
+    check(out.cmdId == 0x0201U,   "A2 b2b: packet A cmd id");
+
+    /* No manual reset between packets: auto-reset must let B parse cleanly. */
+    r = stream_feed_frame(&sp, frameB, lenB, &out, NULL);
+    check(r == SPI_PACKET_V1_OK,  "A2 b2b: packet B completes OK (auto-reset)");
+    check((out.cmdId == 0x0202U) && (out.payloadWords == 1U)
+              && (out.payload != NULL) && (out.payload[0] == 0x3333U),
+          "A2 b2b: packet B cmd id + payload");
+}
+
+/* A2-3: header resync after junk words. */
+static void test_a2_header_resync(void)
+{
+    static SpiPacketV1_StreamParser sp;
+    static const uint16_t p1[1] = { 0xABCDU };
+    uint16_t frame[8];
+    uint16_t len = 0U;
+    ST_SPI_PACKET_V1 out;
+    SPI_PACKET_V1_RESULT_e r;
+
+    SpiPacketV1_StreamInit(&sp);
+    r = SpiPacketV1_StreamFeedWord(&sp, 0x0000U, &out);
+    check(r == SPI_PACKET_V1_ERR_BAD_HEADER, "A2 resync: 0x0000 -> ERR_BAD_HEADER");
+    r = SpiPacketV1_StreamFeedWord(&sp, 0xFFFFU, &out);
+    check(r == SPI_PACKET_V1_ERR_BAD_HEADER, "A2 resync: 0xFFFF -> ERR_BAD_HEADER");
+
+    (void)SpiPacketV1_Encode(0x0301U, p1, 1U, frame, 8U, &len);
+    r = stream_feed_frame(&sp, frame, len, &out, NULL);
+    check((r == SPI_PACKET_V1_OK) && (out.cmdId == 0x0301U),
+          "A2 resync: valid packet after junk -> OK");
+}
+
+/* A2-4: payload containing the header magic must not be misparsed. */
+static void test_a2_magic_in_payload(void)
+{
+    static SpiPacketV1_StreamParser sp;
+    static const uint16_t pl[3] = { 0xA55AU, 0xA55AU, 0x1234U };
+    uint16_t frame[16];
+    uint16_t len = 0U;
+    ST_SPI_PACKET_V1 out;
+    SPI_PACKET_V1_RESULT_e r;
+
+    SpiPacketV1_StreamInit(&sp);
+    (void)SpiPacketV1_Encode(0x0401U, pl, 3U, frame, 16U, &len);
+    r = stream_feed_frame(&sp, frame, len, &out, NULL);
+    check(r == SPI_PACKET_V1_OK,  "A2 magic-in-payload: completes OK");
+    check((out.payloadWords == 3U) && (out.payload != NULL)
+              && (out.payload[0] == 0xA55AU) && (out.payload[1] == 0xA55AU),
+          "A2 magic-in-payload: 0xA55A preserved as payload");
+}
+
+/* A2-5: malformed stream errors reset the parser; resync then succeeds. */
+static void test_a2_malformed_stream(void)
+{
+    static SpiPacketV1_StreamParser sp;
+    static const uint16_t p3[3] = { 0x0AAAU, 0x0BBBU, 0x0CCCU };
+    uint16_t frame[16];
+    uint16_t len = 0U;
+    ST_SPI_PACKET_V1 out;
+    SPI_PACKET_V1_RESULT_e r;
+
+    /* Declared length 4097 -> ERR_PAYLOAD_TOO_LARGE, parser resets. */
+    SpiPacketV1_StreamInit(&sp);
+    (void)SpiPacketV1_StreamFeedWord(&sp, SPI_PACKET_V1_HEADER_MAGIC, &out);
+    (void)SpiPacketV1_StreamFeedWord(&sp, 0x0501U, &out);
+    r = SpiPacketV1_StreamFeedWord(&sp,
+                                   (uint16_t)(SPI_PACKET_V1_MAX_PAYLOAD_WORDS + 1U),
+                                   &out);
+    check(r == SPI_PACKET_V1_ERR_PAYLOAD_TOO_LARGE,
+          "A2 malformed: length 4097 -> ERR_PAYLOAD_TOO_LARGE");
+    (void)SpiPacketV1_Encode(0x0502U, p3, 3U, frame, 16U, &len);
+    r = stream_feed_frame(&sp, frame, len, &out, NULL);
+    check((r == SPI_PACKET_V1_OK) && (out.cmdId == 0x0502U),
+          "A2 malformed: valid packet after too-large -> OK");
+
+    /* CRC mismatch -> ERR_CRC_MISMATCH, parser resets. */
+    SpiPacketV1_StreamInit(&sp);
+    (void)SpiPacketV1_Encode(0x0503U, p3, 3U, frame, 16U, &len);
+    frame[len - 1U] ^= 0x0001U;   /* corrupt CRC word */
+    r = stream_feed_frame(&sp, frame, len, &out, NULL);
+    check(r == SPI_PACKET_V1_ERR_CRC_MISMATCH,
+          "A2 malformed: CRC mismatch -> ERR_CRC_MISMATCH");
+    (void)SpiPacketV1_Encode(0x0504U, p3, 3U, frame, 16U, &len);
+    r = stream_feed_frame(&sp, frame, len, &out, NULL);
+    check((r == SPI_PACKET_V1_OK) && (out.cmdId == 0x0504U),
+          "A2 malformed: valid packet after CRC fail -> OK");
+
+    /* Bad header stays WAIT_HEADER; the next valid packet parses. */
+    SpiPacketV1_StreamInit(&sp);
+    (void)SpiPacketV1_StreamFeedWord(&sp, 0x1234U, &out);
+    (void)SpiPacketV1_Encode(0x0505U, p3, 3U, frame, 16U, &len);
+    r = stream_feed_frame(&sp, frame, len, &out, NULL);
+    check((r == SPI_PACKET_V1_OK) && (out.cmdId == 0x0505U),
+          "A2 malformed: valid packet after bad header -> OK");
+}
+
+/* A2-6: finalize on a partial stream -> ERR_TRUNCATED; idle -> OK. */
+static void test_a2_finalize_truncated(void)
+{
+    static SpiPacketV1_StreamParser sp;
+    static const uint16_t p3[3] = { 0x1212U, 0x3434U, 0x5656U };
+    uint16_t frame[16];
+    uint16_t len = 0U;
+    ST_SPI_PACKET_V1 out;
+    SPI_PACKET_V1_RESULT_e r;
+    uint16_t i;
+
+    (void)SpiPacketV1_Encode(0x0601U, p3, 3U, frame, 16U, &len);   /* len = 7 */
+
+    /* Header only. */
+    SpiPacketV1_StreamInit(&sp);
+    (void)SpiPacketV1_StreamFeedWord(&sp, frame[0], &out);
+    check(SpiPacketV1_StreamFinalize(&sp) == SPI_PACKET_V1_ERR_TRUNCATED,
+          "A2 finalize: header only -> ERR_TRUNCATED");
+
+    /* Header + command. */
+    SpiPacketV1_StreamInit(&sp);
+    (void)SpiPacketV1_StreamFeedWord(&sp, frame[0], &out);
+    (void)SpiPacketV1_StreamFeedWord(&sp, frame[1], &out);
+    check(SpiPacketV1_StreamFinalize(&sp) == SPI_PACKET_V1_ERR_TRUNCATED,
+          "A2 finalize: header+command -> ERR_TRUNCATED");
+
+    /* Header + command + length. */
+    SpiPacketV1_StreamInit(&sp);
+    for (i = 0U; i < 3U; ++i) { (void)SpiPacketV1_StreamFeedWord(&sp, frame[i], &out); }
+    check(SpiPacketV1_StreamFinalize(&sp) == SPI_PACKET_V1_ERR_TRUNCATED,
+          "A2 finalize: header+command+length -> ERR_TRUNCATED");
+
+    /* Partial payload (1 of 3). */
+    SpiPacketV1_StreamInit(&sp);
+    for (i = 0U; i < 4U; ++i) { (void)SpiPacketV1_StreamFeedWord(&sp, frame[i], &out); }
+    check(SpiPacketV1_StreamFinalize(&sp) == SPI_PACKET_V1_ERR_TRUNCATED,
+          "A2 finalize: partial payload -> ERR_TRUNCATED");
+
+    /* Full payload but CRC word missing (feed all but the last word). */
+    SpiPacketV1_StreamInit(&sp);
+    for (i = 0U; i < (uint16_t)(len - 1U); ++i)
+    {
+        (void)SpiPacketV1_StreamFeedWord(&sp, frame[i], &out);
+    }
+    check(SpiPacketV1_StreamFinalize(&sp) == SPI_PACKET_V1_ERR_TRUNCATED,
+          "A2 finalize: payload complete, CRC missing -> ERR_TRUNCATED");
+
+    /* After a finalize error the parser is reset: a fresh valid packet parses. */
+    r = stream_feed_frame(&sp, frame, len, &out, NULL);
+    check((r == SPI_PACKET_V1_OK) && (out.cmdId == 0x0601U),
+          "A2 finalize: valid packet after finalize error -> OK");
+
+    /* Idle finalize (WAIT_HEADER) returns OK. */
+    SpiPacketV1_StreamInit(&sp);
+    check(SpiPacketV1_StreamFinalize(&sp) == SPI_PACKET_V1_OK,
+          "A2 finalize: idle (WAIT_HEADER) -> OK");
+}
+
+/* A2-7: manual StreamReset mid-stream, then a clean packet. */
+static void test_a2_reset_behavior(void)
+{
+    static SpiPacketV1_StreamParser sp;
+    static const uint16_t p2[2] = { 0x7A7AU, 0x5C5CU };
+    uint16_t frame[16];
+    uint16_t len = 0U;
+    ST_SPI_PACKET_V1 out;
+    SPI_PACKET_V1_RESULT_e r;
+
+    (void)SpiPacketV1_Encode(0x0701U, p2, 2U, frame, 16U, &len);
+
+    SpiPacketV1_StreamInit(&sp);
+    (void)SpiPacketV1_StreamFeedWord(&sp, frame[0], &out);
+    r = SpiPacketV1_StreamFeedWord(&sp, frame[1], &out);
+    check(r == SPI_PACKET_V1_IN_PROGRESS, "A2 reset: partial feed in progress");
+
+    SpiPacketV1_StreamReset(&sp);
+    r = stream_feed_frame(&sp, frame, len, &out, NULL);
+    check((r == SPI_PACKET_V1_OK) && (out.cmdId == 0x0701U)
+              && (out.payloadWords == 2U),
+          "A2 reset: valid packet after manual reset -> OK");
+}
+
+/* A2-8: NULL defensive behaviour. */
+static void test_a2_null_defensive(void)
+{
+    static SpiPacketV1_StreamParser sp;
+    ST_SPI_PACKET_V1 out;
+    SPI_PACKET_V1_RESULT_e r;
+
+    /* NULL-safe init/reset must not crash. */
+    SpiPacketV1_StreamInit(NULL);
+    SpiPacketV1_StreamReset(NULL);
+    check(1, "A2 null: StreamInit/Reset(NULL) no crash");
+
+    SpiPacketV1_StreamInit(&sp);
+    r = SpiPacketV1_StreamFeedWord(NULL, SPI_PACKET_V1_HEADER_MAGIC, &out);
+    check(r == SPI_PACKET_V1_ERR_NULL_ARG, "A2 null: FeedWord(NULL,..) -> ERR_NULL_ARG");
+    r = SpiPacketV1_StreamFeedWord(&sp, SPI_PACKET_V1_HEADER_MAGIC, NULL);
+    check(r == SPI_PACKET_V1_ERR_NULL_ARG, "A2 null: FeedWord(..,NULL) -> ERR_NULL_ARG");
+    r = SpiPacketV1_StreamFinalize(NULL);
+    check(r == SPI_PACKET_V1_ERR_NULL_ARG, "A2 null: StreamFinalize(NULL) -> ERR_NULL_ARG");
+}
+
+/* A2-9: cross-check streaming result against the total-buffer parser. */
+static void test_a2_crosscheck(void)
+{
+    static SpiPacketV1_StreamParser sp;
+    static const uint16_t pl[5] = { 0x0011U, 0x2233U, 0x4455U, 0x6677U, 0x8899U };
+    uint16_t frame[16];
+    uint16_t len = 0U;
+    ST_SPI_PACKET_V1 pktBuf;
+    ST_SPI_PACKET_V1 pktStream;
+    SPI_PACKET_V1_RESULT_e rb;
+    SPI_PACKET_V1_RESULT_e rs;
+    int payloadMatch;
+    uint16_t i;
+
+    (void)SpiPacketV1_Encode(0x0901U, pl, 5U, frame, 16U, &len);
+
+    rb = SpiPacketV1_ParseWords(frame, len, &pktBuf);
+    check(rb == SPI_PACKET_V1_OK, "A2 xcheck: ParseWords OK");
+
+    SpiPacketV1_StreamInit(&sp);
+    rs = stream_feed_frame(&sp, frame, len, &pktStream, NULL);
+    check(rs == SPI_PACKET_V1_OK, "A2 xcheck: stream OK");
+
+    check(pktBuf.cmdId == pktStream.cmdId, "A2 xcheck: cmd id matches");
+    check(pktBuf.payloadWords == pktStream.payloadWords,
+          "A2 xcheck: payloadWords match");
+
+    payloadMatch = (pktBuf.payload != NULL) && (pktStream.payload != NULL);
+    for (i = 0U; (i < pktBuf.payloadWords) && (payloadMatch != 0); ++i)
+    {
+        if (pktBuf.payload[i] != pktStream.payload[i])
+        {
+            payloadMatch = 0;
+        }
+    }
+    check(payloadMatch != 0, "A2 xcheck: payload contents match");
+}
+
 int main(void)
 {
     printf("=== SPI Packet V1 pure-C test ===\n");
@@ -689,6 +1052,17 @@ int main(void)
     test_a1_encoder_payload_bounds();
     test_a1_boundary_values();
     test_a1_failure_output_safety();
+
+    /* ---- A2: Streaming / incremental-feed parser ---- */
+    test_a2_basic_success();
+    test_a2_back_to_back();
+    test_a2_header_resync();
+    test_a2_magic_in_payload();
+    test_a2_malformed_stream();
+    test_a2_finalize_truncated();
+    test_a2_reset_behavior();
+    test_a2_null_defensive();
+    test_a2_crosscheck();
 
     printf("---------------------------------\n");
     printf("PASS=%d  FAIL=%d\n", g_pass, g_fail);

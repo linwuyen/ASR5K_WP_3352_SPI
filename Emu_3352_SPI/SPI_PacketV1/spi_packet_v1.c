@@ -130,3 +130,124 @@ SPI_PACKET_V1_RESULT_e SpiPacketV1_ParseWords(const uint16_t   *words,
     outPkt->crc          = frameCrc;
     return SPI_PACKET_V1_OK;
 }
+
+/* ====================================================================== */
+/* A2 - Streaming / incremental-feed parser                               */
+/*                                                                        */
+/* Word-at-a-time state machine. CRC is accumulated incrementally over    */
+/* Header + Command ID + Data Length + Payload (CRC word excluded), so the */
+/* running value at WAIT_CRC equals SpiPacketCrc16_ComputeWords() over the */
+/* same span used by the total-buffer parser. State and the payload buffer */
+/* live entirely in the caller-owned parser struct (no malloc, no globals).*/
+/* ====================================================================== */
+
+void SpiPacketV1_StreamReset(SpiPacketV1_StreamParser *parser)
+{
+    if (parser == 0)
+    {
+        return;   /* NULL-safe (A2 defensive requirement). */
+    }
+    parser->state         = SPI_PACKET_V1_STREAM_WAIT_HEADER;
+    parser->command_id    = 0U;
+    parser->payload_words = 0U;
+    parser->payload_index = 0U;
+    parser->crc           = SPI_PACKET_CRC16_INIT;
+}
+
+void SpiPacketV1_StreamInit(SpiPacketV1_StreamParser *parser)
+{
+    /* Init == Reset: bring the parser to WAIT_HEADER. The payload buffer is
+     * left untouched; it is only read back via out_packet after completion. */
+    SpiPacketV1_StreamReset(parser);
+}
+
+SPI_PACKET_V1_RESULT_e SpiPacketV1_StreamFeedWord(
+    SpiPacketV1_StreamParser *parser,
+    uint16_t                  word,
+    ST_SPI_PACKET_V1         *out_packet)
+{
+    /* out_packet is required on every call (A2): a NULL sink is a caller error
+     * and leaves the parser state untouched (the word is not consumed). */
+    if ((parser == 0) || (out_packet == 0))
+    {
+        return SPI_PACKET_V1_ERR_NULL_ARG;
+    }
+
+    switch (parser->state)
+    {
+    case SPI_PACKET_V1_STREAM_WAIT_HEADER:
+        if (word != SPI_PACKET_V1_HEADER_MAGIC)
+        {
+            /* Stay in WAIT_HEADER so the next word can be a fresh header
+             * (stream resync without an explicit reset). */
+            return SPI_PACKET_V1_ERR_BAD_HEADER;
+        }
+        parser->crc   = SpiPacketCrc16_UpdateWord(SPI_PACKET_CRC16_INIT, word);
+        parser->state = SPI_PACKET_V1_STREAM_WAIT_COMMAND;
+        return SPI_PACKET_V1_IN_PROGRESS;
+
+    case SPI_PACKET_V1_STREAM_WAIT_COMMAND:
+        parser->command_id = word;
+        parser->crc        = SpiPacketCrc16_UpdateWord(parser->crc, word);
+        parser->state      = SPI_PACKET_V1_STREAM_WAIT_LENGTH;
+        return SPI_PACKET_V1_IN_PROGRESS;
+
+    case SPI_PACKET_V1_STREAM_WAIT_LENGTH:
+        if (word > SPI_PACKET_V1_MAX_PAYLOAD_WORDS)
+        {
+            SpiPacketV1_StreamReset(parser);
+            return SPI_PACKET_V1_ERR_PAYLOAD_TOO_LARGE;
+        }
+        parser->payload_words = word;
+        parser->payload_index = 0U;
+        parser->crc           = SpiPacketCrc16_UpdateWord(parser->crc, word);
+        parser->state = (word == 0U) ? SPI_PACKET_V1_STREAM_WAIT_CRC
+                                     : SPI_PACKET_V1_STREAM_WAIT_PAYLOAD;
+        return SPI_PACKET_V1_IN_PROGRESS;
+
+    case SPI_PACKET_V1_STREAM_WAIT_PAYLOAD:
+        parser->payload[parser->payload_index] = word;
+        parser->crc = SpiPacketCrc16_UpdateWord(parser->crc, word);
+        parser->payload_index++;
+        if (parser->payload_index >= parser->payload_words)
+        {
+            parser->state = SPI_PACKET_V1_STREAM_WAIT_CRC;
+        }
+        return SPI_PACKET_V1_IN_PROGRESS;
+
+    case SPI_PACKET_V1_STREAM_WAIT_CRC:
+    default:
+        if (word != parser->crc)
+        {
+            SpiPacketV1_StreamReset(parser);
+            return SPI_PACKET_V1_ERR_CRC_MISMATCH;
+        }
+        /* Frame complete: commit only now, then auto-reset for the next one.
+         * payload aliases the parser buffer (NULL when empty), valid until the
+         * next packet's payload overwrites it. */
+        out_packet->cmdId        = parser->command_id;
+        out_packet->payloadWords = parser->payload_words;
+        out_packet->payload      = (parser->payload_words > 0U)
+                                       ? parser->payload
+                                       : 0;
+        out_packet->crc          = word;
+        SpiPacketV1_StreamReset(parser);
+        return SPI_PACKET_V1_OK;
+    }
+}
+
+SPI_PACKET_V1_RESULT_e SpiPacketV1_StreamFinalize(
+    SpiPacketV1_StreamParser *parser)
+{
+    if (parser == 0)
+    {
+        return SPI_PACKET_V1_ERR_NULL_ARG;
+    }
+    if (parser->state == SPI_PACKET_V1_STREAM_WAIT_HEADER)
+    {
+        return SPI_PACKET_V1_OK;   /* idle: no frame in flight */
+    }
+    /* A partial frame was mid-stream; report and reset for resync. */
+    SpiPacketV1_StreamReset(parser);
+    return SPI_PACKET_V1_ERR_TRUNCATED;
+}

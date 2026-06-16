@@ -68,7 +68,9 @@ typedef enum
     SPI_PACKET_V1_ERR_PAYLOAD_TOO_LARGE,
     SPI_PACKET_V1_ERR_CRC_MISMATCH,
     SPI_PACKET_V1_ERR_BUFFER_TOO_SMALL,
-    SPI_PACKET_V1_ERR_TRUNCATED
+    SPI_PACKET_V1_ERR_TRUNCATED,
+    /* A2 streaming parser: frame not yet complete (more words expected). */
+    SPI_PACKET_V1_IN_PROGRESS
 } SPI_PACKET_V1_RESULT_e;
 
 /*
@@ -111,6 +113,78 @@ SPI_PACKET_V1_RESULT_e SpiPacketV1_Encode(uint16_t        cmdId,
 SPI_PACKET_V1_RESULT_e SpiPacketV1_ParseWords(const uint16_t   *words,
                                               uint16_t          wordCount,
                                               ST_SPI_PACKET_V1 *outPkt);
+
+/* ====================================================================== */
+/* A2 - Streaming / incremental-feed parser                               */
+/*                                                                        */
+/* Same wire format and CRC coverage as the total-buffer parser, but the  */
+/* caller feeds one 16-bit word at a time. State lives entirely in a       */
+/* caller-owned SpiPacketV1_StreamParser (no malloc, no globals). The CRC  */
+/* is accumulated incrementally over Header + Command ID + Data Length +   */
+/* Payload (the CRC word itself is excluded), identical to ParseWords.     */
+/* ====================================================================== */
+
+typedef enum
+{
+    SPI_PACKET_V1_STREAM_WAIT_HEADER = 0,
+    SPI_PACKET_V1_STREAM_WAIT_COMMAND,
+    SPI_PACKET_V1_STREAM_WAIT_LENGTH,
+    SPI_PACKET_V1_STREAM_WAIT_PAYLOAD,
+    SPI_PACKET_V1_STREAM_WAIT_CRC
+} SpiPacketV1_StreamState;
+
+/*
+ * Streaming parser state. Caller-owned; pass the same instance to every
+ * SpiPacketV1_StreamFeedWord call. The payload buffer is embedded for
+ * correctness-first simplicity (A2): the struct is ~8 KB, so prefer static
+ * or heap-free long-lived storage rather than a deep stack frame.
+ */
+typedef struct
+{
+    SpiPacketV1_StreamState state;
+    uint16_t command_id;
+    uint16_t payload_words;   /* declared N (valid once past WAIT_LENGTH)   */
+    uint16_t payload_index;   /* payload words received so far              */
+    uint16_t crc;             /* running CRC over header+cmd+length+payload */
+    uint16_t payload[SPI_PACKET_V1_MAX_PAYLOAD_WORDS];
+} SpiPacketV1_StreamParser;
+
+/*
+ * Initialise / reset a streaming parser to WAIT_HEADER. Both are NULL-safe
+ * (a NULL parser is ignored). Reset is also performed automatically after a
+ * completed packet and after any error result.
+ */
+void SpiPacketV1_StreamInit(SpiPacketV1_StreamParser *parser);
+void SpiPacketV1_StreamReset(SpiPacketV1_StreamParser *parser);
+
+/*
+ * Feed one 16-bit word. Returns:
+ *   SPI_PACKET_V1_IN_PROGRESS         - word accepted, frame not yet complete
+ *   SPI_PACKET_V1_OK                  - frame complete; *out_packet committed,
+ *                                       parser auto-reset to WAIT_HEADER
+ *   SPI_PACKET_V1_ERR_NULL_ARG        - parser or out_packet is NULL
+ *   SPI_PACKET_V1_ERR_BAD_HEADER      - first word != 0xA55A; stays WAIT_HEADER
+ *                                       (ready to resync on the next word)
+ *   SPI_PACKET_V1_ERR_PAYLOAD_TOO_LARGE - declared length > MAX; parser reset
+ *   SPI_PACKET_V1_ERR_CRC_MISMATCH    - CRC word mismatch; parser reset
+ *
+ * out_packet is required on every call and is written only on OK. On OK,
+ * out_packet->payload aliases the parser's internal buffer (NULL if empty);
+ * it stays valid until the next packet's payload overwrites it.
+ */
+SPI_PACKET_V1_RESULT_e SpiPacketV1_StreamFeedWord(
+    SpiPacketV1_StreamParser *parser,
+    uint16_t                  word,
+    ST_SPI_PACKET_V1         *out_packet);
+
+/*
+ * Finalise a stream (e.g. end of transfer). Returns:
+ *   SPI_PACKET_V1_OK            - parser was idle (WAIT_HEADER); nothing pending
+ *   SPI_PACKET_V1_ERR_TRUNCATED - a partial frame was in flight; parser reset
+ *   SPI_PACKET_V1_ERR_NULL_ARG  - parser is NULL
+ */
+SPI_PACKET_V1_RESULT_e SpiPacketV1_StreamFinalize(
+    SpiPacketV1_StreamParser *parser);
 
 #ifdef __cplusplus
 }

@@ -384,13 +384,34 @@ strict ordering (NULL checks first):
 
 ## 9. Command ID Allocation Policy
 
+> **Superseded by A3.** The authoritative `command_id` namespace and the initial
+> command catalog now live in `SPI_PACKET_V1_COMMAND_CATALOG_A3.md`, chosen
+> against the legacy map audited in `SPI_PACKET_V1_LEGACY_CMD_MAP_AUDIT.md`. Use
+> that document to allocate command IDs. This section is retained only to record
+> *why* the original sketch was withdrawn.
+
 Command IDs are a flat 16-bit space, independent of legacy register addresses.
 
+> **Withdrawn pre-audit sketch (do NOT allocate from these ranges):** an earlier
+> draft proposed `0x0001 .. 0x00FF` for protocol/control and **`0x0100 .. 0x0FFF`
+> as an application range**. The A3-0 audit showed `0x0100 .. 0x0FFF` **overlaps
+> live legacy register addresses** (`0x0400 .. 0x0FFF`), so that range must
+> **never** be used for a `command_id`. The sketch is superseded by the A3
+> namespace below.
+
+Authoritative namespace (full detail in `SPI_PACKET_V1_COMMAND_CATALOG_A3.md` §3):
+
 - **`0x0000`** — reserved (NULL / no-op). Do not assign.
-- **`0x0001 .. 0x00FF`** — reserved for Packet V1 protocol/control commands
-  (e.g. ping, version query, capability negotiation). Defined as needed.
-- **`0x0100 .. 0x0FFF`** — application command range (downloads, config, etc.).
-- **`0x1000 .. 0xFEFF`** — reserved for future expansion.
+- **`0x0400 .. 0x0FFF`** and **`0x3000 .. 0x3FFF`** — **forbidden**: these are
+  legacy `*_spi_addr` register / block-data addresses. Never assign as a
+  `command_id`.
+- **`0xA55A`** — forbidden (Packet V1 header magic; avoid dump confusion).
+- **`0x8000 .. 0x80FF`** — Packet V1 protocol / meta / control commands (the A3
+  initial catalog: ping, version, caps, echo, error).
+- **`0x8100 .. 0x8FFF`** — Packet V1 application / management (future).
+- **`0x9000 .. 0x9FFF`** — reserved for Packet V1 wave-related future commands.
+- **`0xA000 .. 0xAFFF`** — reserved (with the `0xA55A` carve-out above).
+- **`0xB000 .. 0xFEFF`** — reserved for future expansion.
 - **`0xFF00 .. 0xFFFF`** — reserved for diagnostics / experimental use.
 
 Allocation rules:
@@ -398,12 +419,12 @@ Allocation rules:
 - Command IDs are **append-only**. Once a command ID has a defined meaning, that
   meaning is frozen; new behavior takes a new command ID.
 - The Packet V1 command space is **separate** from the legacy
-  `*_spi_addr` register map in `SPIB_Slave/cmd_id.h`. There is no implied
-  overlap or aliasing between a Packet V1 command ID and a legacy register
-  address.
-- This spec does not yet define any concrete command IDs. The first integration
-  PR that consumes packets is responsible for allocating them from the ranges
-  above and documenting them here.
+  `*_spi_addr` register map in `SPIB_Slave/cmd_id.h`. Allocating entirely at or
+  above `0x8000` keeps it provably disjoint (legacy addresses top out at
+  `0x3FFF`); there is no implied overlap or aliasing between a Packet V1 command
+  ID and a legacy register address.
+- Concrete command IDs are allocated in `SPI_PACKET_V1_COMMAND_CATALOG_A3.md`,
+  not here. Any future command must come from the A3 catalog's `0x8000+` bands.
 
 ---
 

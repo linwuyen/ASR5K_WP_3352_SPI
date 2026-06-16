@@ -51,9 +51,8 @@ tests and golden vectors, mirroring A2).
   section sketched an allocation (`0x0100`–`0x0FFF` "application range") *before*
   the legacy map was audited; that range **overlaps** legacy addresses
   `0x0400`–`0x0FFF` and must not be used for `command_id`. This A3 catalog is the
-  authoritative allocation. **Recommended follow-up (not done here):** update
-  `SPEC.md` §9 to point at this document. It is intentionally left untouched in
-  this WP to keep the change set to a single new file.
+  authoritative allocation. In this A3 change, `SPEC.md` §9 is updated to point
+  here and to record that the old `0x0100`–`0x0FFF` sketch is withdrawn.
 
 ---
 

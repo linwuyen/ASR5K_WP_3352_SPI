@@ -31,7 +31,7 @@ The `Emu_3352_SPI` transport uses:
 5. One trailing frame before normal Legacy control traffic resumes.
 
 Detailed evidence and the regression watch list are in
-[`M5R_PHASE2_BURST_TRANSPORT.md`](../02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md).
+[`M5R_PHASE2_BURST_TRANSPORT.md`](../02_Milestones/ACTIVE_EVIDENCE/M5R_PHASE2_BURST_TRANSPORT.md).
 
 ## Frozen Architecture Boundaries
 

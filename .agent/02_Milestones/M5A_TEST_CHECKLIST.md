@@ -2,7 +2,7 @@
 
 > Historical M5A checklist. The current verified transport contract and watch
 > list are maintained in
-> [`.agent/02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md`](.agent/02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md).
+> [`.agent/02_Milestones/ACTIVE_EVIDENCE/M5R_PHASE2_BURST_TRANSPORT.md`](ACTIVE_EVIDENCE/M5R_PHASE2_BURST_TRANSPORT.md).
 
 This checklist defines the tomorrow morning hardware validation procedure for the **M5A Wave Download Path** implementation on CPU1.
 

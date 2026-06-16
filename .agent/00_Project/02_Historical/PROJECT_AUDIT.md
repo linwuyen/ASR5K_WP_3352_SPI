@@ -14,7 +14,7 @@ This audit evaluates the structure, consistency, and link integrity of the newly
 
 ## 2. Missing Architecture Links
 * **Findings:**
-  * There is no cross-referencing between the high-level architecture specification ([SPEC_FIRMWARE_ARCH.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/01_Architecture/SPEC_FIRMWARE_ARCH.md)) and the frozen decisions log ([ASR5K_DECISIONS.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/00_Project/ASR5K_DECISIONS.md)).
+  * There is no cross-referencing between the high-level architecture specification ([SPEC_FIRMWARE_ARCH.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/01_Architecture/ACTIVE/SPEC_FIRMWARE_ARCH.md)) and the frozen decisions log ([ASR5K_DECISIONS.md](file:///c:/Users/roger_lin/Documents/GitHub/ASR5K_GITLAB_GW/ASR5K_V2_Function/WP_3352_SPI/.agent/00_Project/ASR5K_DECISIONS.md)).
 * **Recommendations:**
   * Add a section in `SPEC_FIRMWARE_ARCH.md` that explicitly references `ASR5K_DECISIONS.md` for specific implementation constraints (e.g. DMA channel mappings, RAM section constraints).
 

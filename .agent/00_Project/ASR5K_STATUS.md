@@ -46,7 +46,7 @@
 ## M5R Phase 2 Evidence
 
 See
-[`M5R_PHASE2_BURST_TRANSPORT.md`](../02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md)
+[`M5R_PHASE2_BURST_TRANSPORT.md`](../02_Milestones/ACTIVE_EVIDENCE/M5R_PHASE2_BURST_TRANSPORT.md)
 for the protocol sequence, transport invariants, hardware evidence, and
 regression watch list.
 

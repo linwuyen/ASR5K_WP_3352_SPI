@@ -12,7 +12,7 @@ Legacy burst transport. It is usable only where consistent with:
 1. `.agent/00_Project/ASR5K_DECISIONS.md`
 2. `.agent/ARCHITECTURE_CONFLICT_REGISTER.md`
 3. D10 Wave Validation Policy
-4. `.agent/02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md`
+4. `.agent/02_Milestones/ACTIVE_EVIDENCE/M5R_PHASE2_BURST_TRANSPORT.md`
 
 The milestone supplies implementation evidence only. It does not create
 architecture. D11 Packet Protocol remains candidate-only and is not the source

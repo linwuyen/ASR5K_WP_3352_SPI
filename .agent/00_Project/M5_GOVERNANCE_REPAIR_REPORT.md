@@ -21,8 +21,8 @@ or other firmware modification.
 5. `.agent/DOCUMENT_STATUS_REGISTRY.md`
 6. `.agent/01_Architecture/ASR5K設計文件/asr5k_readme.pdf`
 7. Applicable D01, D02, D03, D04, D05, D07, and D10 documents
-8. `.agent/01_Architecture/SPEC_M5_WAVE_DOWNLOAD.md`
-9. `.agent/02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md`
+8. `.agent/01_Architecture/ACTIVE/SPEC_M5_WAVE_DOWNLOAD.md`
+9. `.agent/02_Milestones/ACTIVE_EVIDENCE/M5R_PHASE2_BURST_TRANSPORT.md`
 10. `.agent/00_Project/ASR5K_HANDOFF.md`
 11. `.agent/00_Project/ASR5K_STATUS.md`
 12. Current `Emu_3352_SPI` wave-download headers, implementation, parser, and
@@ -71,7 +71,7 @@ wave runtime source and CPU ownership.
 - Governance and project records under `.agent/00_Project/`
 - `.agent/ARCHITECTURE_CONFLICT_REGISTER.md`
 - `.agent/DOCUMENT_STATUS_REGISTRY.md`
-- `.agent/01_Architecture/SPEC_M5_WAVE_DOWNLOAD.md`
+- `.agent/01_Architecture/ACTIVE/SPEC_M5_WAVE_DOWNLOAD.md`
 - Operational tooling under `.agent/skills/`
 - Minimum checks under `.agent/ci/`
 
@@ -106,7 +106,7 @@ No frozen production architecture decision changed:
 2. `.agent/00_Project/ASR5K_HANDOFF.md`
 3. `.agent/00_Project/ASR5K_STATUS.md`
 4. `.agent/00_Project/M5_GOVERNANCE_REPAIR_REPORT.md`
-5. `.agent/01_Architecture/SPEC_M5_WAVE_DOWNLOAD.md`
+5. `.agent/01_Architecture/ACTIVE/SPEC_M5_WAVE_DOWNLOAD.md`
 6. `.agent/ARCHITECTURE_CONFLICT_REGISTER.md`
 7. `.agent/DOCUMENT_STATUS_REGISTRY.md`
 8. `.agent/skills/agent_hooks.py`

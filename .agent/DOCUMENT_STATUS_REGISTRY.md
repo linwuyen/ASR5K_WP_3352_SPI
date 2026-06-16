@@ -27,8 +27,8 @@ Status does not replace the authority hierarchy. Milestone evidence (`ACTIVE_EVI
 | `.agent/00_Project/ASR5K_HANDOFF.md` | ACTIVE | Current M5A Wave Download/Test9 handoff. |
 | `.agent/00_Project/ASR5K_STATUS.md` | ACTIVE | Current governance and milestone status. |
 | `.agent/00_Project/M5_GOVERNANCE_REPAIR_REPORT.md` | ACTIVE | Current governance-repair evidence and gate report; not architecture authority. |
-| `.agent/00_Project/PROJECT_AUDIT.md` | HISTORICAL | Project configuration audit report. |
-| `.agent/00_Project/M3_HANDOFF_PROMPT.md` | HISTORICAL | M3-era handoff evidence only. |
+| `.agent/00_Project/02_Historical/PROJECT_AUDIT.md` | HISTORICAL | Project configuration audit report. |
+| `.agent/00_Project/02_Historical/M3_HANDOFF_PROMPT.md` | HISTORICAL | M3-era handoff evidence only. |
 
 ## Architecture Documents
 
@@ -46,10 +46,10 @@ Status does not replace the authority hierarchy. Milestone evidence (`ACTIVE_EVI
 | `.agent/01_Architecture/ASR5K設計文件/D07_DDS_RUNTIME_MANAGER*.md` | ACTIVE | Current DDS runtime and EMIF1 source authority; interpreted with CPU2 runtime ownership decision. |
 | `.agent/01_Architecture/ASR5K設計文件/D10_WAVE_VALIDATION_POLICY*.md` | ACTIVE | Current validation-policy authority. |
 | `.agent/01_Architecture/ASR5K設計文件/D11_AM3352_PROTOCOL*.md` | REFERENCE_ONLY | Protocol study/candidate only; cannot select production protocol. |
-| `.agent/01_Architecture/SPEC_FIRMWARE_ARCH.md` | ACTIVE | Supporting firmware architecture where consistent with higher authority. |
-| `.agent/01_Architecture/SPEC_M5_WAVE_DOWNLOAD.md` | ACTIVE | Supporting download specification only where consistent with M5R Phase 2 evidence, D10 validation policy, approved decisions, and the conflict register. Milestone evidence cannot override D10 or frozen architecture. |
-| `.agent/01_Architecture/cpu1_research_plan.md` | REFERENCE_ONLY | CPU1 research plan; not current project status or production authority. |
-| `.agent/01_Architecture/cpu2_research_plan.md` | REFERENCE_ONLY | CPU2 research plan; not current project status or production authority. |
+| `.agent/01_Architecture/ACTIVE/SPEC_FIRMWARE_ARCH.md` | ACTIVE | Supporting firmware architecture where consistent with higher authority. |
+| `.agent/01_Architecture/ACTIVE/SPEC_M5_WAVE_DOWNLOAD.md` | ACTIVE | Supporting download specification only where consistent with M5R Phase 2 evidence, D10 validation policy, approved decisions, and the conflict register. Milestone evidence cannot override D10 or frozen architecture. |
+| `.agent/01_Architecture/REFERENCE_ONLY/cpu1_research_plan.md` | REFERENCE_ONLY | CPU1 research plan; not current project status or production authority. |
+| `.agent/01_Architecture/REFERENCE_ONLY/cpu2_research_plan.md` | REFERENCE_ONLY | CPU2 research plan; not current project status or production authority. |
 | `.agent/01_Architecture/ASR5K設計文件/R*.md` | REFERENCE_ONLY | R-series research documents. |
 | `.agent/01_Architecture/ASR5K設計文件/[音檔說明]DDS控制與保護系統架構整理 345f92a6410e804cbbdcc057cf5285b4.md` | REFERENCE_ONLY | Audio-derived explanatory notes. |
 | `.agent/01_Architecture/ASR5K設計文件/[音檔說明]SPI FIFO、DMA 傳輸（DRAM Flash）的架構 373f92a6410e80a0bcc3cb7f9ec8f811.md` | REFERENCE_ONLY | Audio-derived explanatory notes. |
@@ -88,7 +88,7 @@ Status does not replace the authority hierarchy. Milestone evidence (`ACTIVE_EVI
 | `.agent/02_Milestones/M5_WAVE_DOWNLOAD_PLAN.md` | SUPERSEDED | Preparation plan does not represent the current unresolved M5A receive direction. |
 | `.agent/02_Milestones/M5_LEGACY_COMMAND_TO_DDS_INTEGRATION.md` | SUPERSEDED | Direct DDS execution assumptions conflict with frozen CPU ownership. |
 | `.agent/02_Milestones/M5R_PORTABILITY_REVIEW.md` | HISTORICAL | M5A-era portability snapshot and review evidence. |
-| `.agent/02_Milestones/M5R_PHASE2_BURST_TRANSPORT.md` | ACTIVE_EVIDENCE | Hardware-verified M5R Phase 2 transport evidence and regression watch list; does not create architecture. |
+| `.agent/02_Milestones/ACTIVE_EVIDENCE/M5R_PHASE2_BURST_TRANSPORT.md` | ACTIVE_EVIDENCE | Hardware-verified M5R Phase 2 transport evidence and regression watch list; does not create architecture. |
 | `.agent/02_Milestones/M5A_TEST_CHECKLIST.md` | HISTORICAL | M5A milestone test checklist. |
 | `.agent/02_Milestones/M5_WAVE_SDRAM_TRANSPORT_CLOSURE_PLAN.md` | HISTORICAL | M5 wave SDRAM transport closure plan. |
 | `.agent/02_Milestones/SPIB_D02_CONFORMANCE_REPORT.md` | HISTORICAL | SPIB D02 interface conformance report. |

@@ -33,6 +33,13 @@ extern "C" {
 #define SPI_PACKET_V1_OVERHEAD_WORDS    4U      /* header + cmd + length + crc */
 
 /*
+ * Minimum valid frame = overhead only (zero payload). Any wordCount below this
+ * is rejected as SPI_PACKET_V1_ERR_TRUNCATED by the minimum-length gate
+ * (parser validation step 2), regardless of which field appears "missing".
+ */
+#define SPI_PACKET_V1_MIN_WORDS         SPI_PACKET_V1_OVERHEAD_WORDS
+
+/*
  * Maximum payload, in 16-bit words. This is the Packet V1 parser/spec limit and
  * is deliberately independent of the legacy SIZE_OF_SPI_BLOCK_RAM (4095): the
  * pure-C packet format is not bound to any legacy buffer size. A future SPIB
@@ -82,9 +89,10 @@ typedef struct
  *   cmdId        : command id placed in w1
  *   payload      : N payload words (may be NULL only when payloadWords == 0)
  *   payloadWords : N
- *   outWords     : destination buffer
+ *   outWords     : destination buffer (required, non-NULL)
  *   outCapacity  : capacity of outWords, in words
- *   outLen       : (optional, may be NULL) receives total frame word count
+ *   outLen       : required (non-NULL); receives total frame word count.
+ *                  A NULL outLen returns SPI_PACKET_V1_ERR_NULL_ARG (A1).
  * Returns SPI_PACKET_V1_OK on success; see header for error codes.
  */
 SPI_PACKET_V1_RESULT_e SpiPacketV1_Encode(uint16_t        cmdId,

@@ -25,6 +25,12 @@ SPI_PACKET_V1_RESULT_e SpiPacketV1_Encode(uint16_t        cmdId,
     {
         return SPI_PACKET_V1_ERR_NULL_ARG;
     }
+    if (outLen == 0)
+    {
+        /* outLen is a required output (A1): the encoder always reports the
+         * frame size, so a NULL length sink is a caller error. */
+        return SPI_PACKET_V1_ERR_NULL_ARG;
+    }
     if ((payload == 0) && (payloadWords > 0U))
     {
         return SPI_PACKET_V1_ERR_NULL_ARG;
@@ -57,10 +63,7 @@ SPI_PACKET_V1_RESULT_e SpiPacketV1_Encode(uint16_t        cmdId,
                                                  + payloadWords));
     outWords[SPI_PACKET_V1_OFFSET_PAYLOAD + payloadWords] = crc;
 
-    if (outLen != 0)
-    {
-        *outLen = frameWords;
-    }
+    *outLen = frameWords;
     return SPI_PACKET_V1_OK;
 }
 

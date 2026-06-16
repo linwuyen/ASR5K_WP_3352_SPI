@@ -240,20 +240,36 @@ frame[3 + N] = crc
 ## 7. Parser Rules
 
 Given an input word array `words[0..wordCount-1]`, the parser applies these
-checks **in order** and rejects on the first failure:
+checks in **strict order** and rejects on the first failure. This numbered
+sequence is the normative **validation order** — both the implementation and the
+test matrix follow it, so the expected error for any malformed frame is the one
+produced by the *first* gate it trips:
 
-1. **Null / arg check.** `words` and the output struct must be non-NULL.
+1. **NULL argument check.** `words` and `outPkt` must be non-NULL
    -> `ERR_NULL_ARG`.
-2. **Minimum length.** `wordCount >= SPI_PACKET_V1_OVERHEAD_WORDS` (4). If the
-   frame is too short to even contain header+cmd+len+crc -> `ERR_TRUNCATED`.
+2. **Minimum word_count.** `wordCount >= SPI_PACKET_V1_MIN_WORDS` (= 4, the
+   overhead-only frame). Anything shorter is the *too-short* class
+   -> `ERR_TRUNCATED`, **regardless of which field appears "missing"**. In
+   particular `wordCount == 3` returns `ERR_TRUNCATED`, not
+   `ERR_LENGTH_MISMATCH` — the minimum-length gate is checked before the
+   exact-length rule.
 3. **Header.** `words[0] == 0xA55A`. Otherwise -> `ERR_BAD_HEADER`.
-4. **Declared length sanity.** `N = words[2]`; require `N <=
-   MAX_PAYLOAD_WORDS`. Otherwise -> `ERR_PAYLOAD_TOO_LARGE`.
+4. **Declared length sanity.** `N = words[2]`; require
+   `N <= SPI_PACKET_V1_MAX_PAYLOAD_WORDS` (4096). Otherwise
+   -> `ERR_PAYLOAD_TOO_LARGE`.
 5. **Exact length match.** `wordCount == 4 + N`. The frame must be exactly the
    size its length field declares — no trailing or missing words. Otherwise
    -> `ERR_LENGTH_MISMATCH`.
 6. **CRC.** Recompute CRC over `words[0 .. 2+N]` and compare with `words[3+N]`.
    Mismatch -> `ERR_CRC_MISMATCH`.
+7. **Output commit.** Only after all checks pass are the parsed fields written
+   to `*outPkt`.
+
+**Failure-output safety.** Before any validation (as soon as `outPkt` is known
+non-NULL) the parser zeroes `*outPkt`. Therefore on *any* non-OK result the
+output stays all-zero and never carries the rejected frame's command id, payload
+length, or payload pointer. A caller that ignores the return code still cannot
+mistake a malformed frame for a valid `cmdId`/payload.
 
 On success the parser fills the output struct:
 
@@ -274,33 +290,63 @@ buffer. The caller owns the buffer lifetime.
 The parser is **total**: every input either parses cleanly or returns a specific
 non-OK result code. It never reads out of bounds and never mutates the input.
 
+**Parser result matrix** (first matching gate in the validation order wins):
+
 | Condition                              | Result code               |
 |----------------------------------------|---------------------------|
-| NULL `words` or NULL output struct     | `ERR_NULL_ARG`            |
-| `wordCount < 4`                         | `ERR_TRUNCATED`           |
+| NULL `words` or NULL `outPkt`          | `ERR_NULL_ARG`            |
+| `wordCount < 4` (= MIN_WORDS)          | `ERR_TRUNCATED`           |
 | `words[0] != 0xA55A`                    | `ERR_BAD_HEADER`          |
-| `words[2] > MAX_PAYLOAD_WORDS`          | `ERR_PAYLOAD_TOO_LARGE`   |
+| `words[2] > 4096` (MAX_PAYLOAD_WORDS)   | `ERR_PAYLOAD_TOO_LARGE`   |
 | `wordCount != 4 + words[2]`             | `ERR_LENGTH_MISMATCH`     |
 | recomputed CRC != frame CRC            | `ERR_CRC_MISMATCH`        |
 | all checks pass                         | `OK`                      |
 
-Rules:
+**Length exact-match rule.** A frame is valid only when
+`wordCount == 4 + words[2]` *exactly*. One missing word (truncation) and one
+extra trailing word are both `ERR_LENGTH_MISMATCH`. The declared length is the
+single source of truth for frame size; the parser never scans for a header or
+CRC to "find" the boundary.
 
-- On any non-OK result, the output struct contents are **undefined** and must
-  not be used. (The reference implementation zeroes it for safety.)
-- The order in section 7 is normative: e.g. a frame with both a bad header and
-  a bad CRC reports `ERR_BAD_HEADER`, because the header is checked first.
-- A length field larger than `MAX_PAYLOAD_WORDS` is rejected *before* the exact
-  length comparison, so an absurd `N` can never drive a large read.
+**CRC coverage rule.** The CRC covers `words[0 .. 2+N]` (Header + Command ID +
+Data Length + Payload) and excludes the CRC word itself. The CRC is checked
+*last* (step 6), so it only runs on a frame whose header and length are already
+proven consistent.
 
-Encoder error handling (`SpiPacketV1_Encode`) is symmetric:
+**Validation-order interactions** (which gate fires when two fields are wrong):
 
-| Condition                                   | Result code              |
-|---------------------------------------------|--------------------------|
-| NULL output, or NULL payload with `N > 0`   | `ERR_NULL_ARG`           |
-| `payloadWords > MAX_PAYLOAD_WORDS`          | `ERR_PAYLOAD_TOO_LARGE`  |
-| `outCapacity < 4 + payloadWords`            | `ERR_BUFFER_TOO_SMALL`   |
-| otherwise                                   | `OK`                     |
+| Mutation of a valid frame            | Result code            | Why (first gate) |
+|--------------------------------------|------------------------|------------------|
+| flip a **Header** bit                | `ERR_BAD_HEADER`       | header (3) before CRC (6) |
+| flip a **Command ID** bit            | `ERR_CRC_MISMATCH`     | header/length still valid |
+| flip a **Data Length** bit           | `ERR_LENGTH_MISMATCH`  | changes `N`, so exact-length (5) trips before CRC |
+| flip a **Payload** bit               | `ERR_CRC_MISMATCH`     | only the CRC detects it |
+| flip the **CRC** word bit            | `ERR_CRC_MISMATCH`     | CRC compare fails |
+
+A Data-Length bit flip can never reach the CRC gate: changing `N` makes
+`4 + N != wordCount`, so it is always caught by the exact-length rule first
+(or by `ERR_PAYLOAD_TOO_LARGE` if the flip pushes `N` above 4096).
+
+**Failure-output safety (guaranteed, not best-effort).** On any non-OK result
+`*outPkt` is left **all-zero** (`cmdId = 0`, `payloadWords = 0`,
+`payload = NULL`, `crc = 0`). The parser zeroes the struct before validating, so
+a rejected frame can never leave a valid-looking command id or payload behind.
+
+Encoder error handling (`SpiPacketV1_Encode`) is symmetric and uses the same
+strict ordering (NULL checks first):
+
+| Condition                                          | Result code              |
+|----------------------------------------------------|--------------------------|
+| `outWords == NULL`                                 | `ERR_NULL_ARG`           |
+| `outLen == NULL` (length output is **required**)   | `ERR_NULL_ARG`           |
+| `payload == NULL` with `payloadWords > 0`          | `ERR_NULL_ARG`           |
+| `payloadWords > 4096` (MAX_PAYLOAD_WORDS)          | `ERR_PAYLOAD_TOO_LARGE`  |
+| `outCapacity < 4 + payloadWords`                   | `ERR_BUFFER_TOO_SMALL`   |
+| otherwise                                          | `OK`                     |
+
+> **A1 change:** `outLen` is now a **required** output. Passing `outLen == NULL`
+> returns `ERR_NULL_ARG` (previously it was optional). `payload == NULL` is still
+> valid *only* when `payloadWords == 0`.
 
 ---
 
@@ -357,6 +403,88 @@ can be built and run on a host PC. It must cover, at minimum:
 
 The test program returns exit code `0` when all cases pass, non-zero otherwise,
 and prints a per-case PASS/FAIL line.
+
+### 11.1 A1 — Malformed Packet Matrix
+
+A1 extends the base matrix above with an exhaustive malformed-frame sweep. Each
+row is one or more assertions in `spi_packet_v1_test.c`; the expected result is
+dictated by the validation order in section 7.
+
+**Parser — NULL / minimum length**
+
+| Case                                   | Expected            |
+|----------------------------------------|---------------------|
+| `words == NULL`                         | `ERR_NULL_ARG`      |
+| `outPkt == NULL`                        | `ERR_NULL_ARG`      |
+| `wordCount = 0`                         | `ERR_TRUNCATED`     |
+| `wordCount = 1`                         | `ERR_TRUNCATED`     |
+| `wordCount = 2`                         | `ERR_TRUNCATED`     |
+| `wordCount = 3` (no CRC word)           | `ERR_TRUNCATED`     |
+| `wordCount = MIN_WORDS - 1` (= 3)       | `ERR_TRUNCATED`     |
+
+**Parser — header error** (otherwise valid 4-word frame)
+
+| `words[0]` value      | Expected         |
+|-----------------------|------------------|
+| `0x0000`              | `ERR_BAD_HEADER` |
+| `0xFFFF`              | `ERR_BAD_HEADER` |
+| `0xA55B` (bit flip)   | `ERR_BAD_HEADER` |
+| `0x1234`              | `ERR_BAD_HEADER` |
+
+**Parser — length mismatch**
+
+| Case                                              | Expected                 |
+|---------------------------------------------------|--------------------------|
+| Data Length 0, one extra payload word             | `ERR_LENGTH_MISMATCH`    |
+| Data Length 1, payload word missing               | `ERR_LENGTH_MISMATCH`    |
+| Data Length 1, CRC word missing                   | `ERR_LENGTH_MISMATCH`    |
+| Data Length 2, only 1 payload word                | `ERR_LENGTH_MISMATCH`    |
+| Data Length 4096, truncated by 1 word             | `ERR_LENGTH_MISMATCH`    |
+| Data Length 4096, one extra trailing word         | `ERR_LENGTH_MISMATCH`    |
+| Data Length 4097                                  | `ERR_PAYLOAD_TOO_LARGE`  |
+
+**Parser — CRC / order interactions** (flip one bit of a valid frame)
+
+| Mutated field   | Expected               |
+|-----------------|------------------------|
+| Header          | `ERR_BAD_HEADER`       |
+| Command ID      | `ERR_CRC_MISMATCH`     |
+| Data Length     | `ERR_LENGTH_MISMATCH`  |
+| Payload[0]      | `ERR_CRC_MISMATCH`     |
+| Payload[last]   | `ERR_CRC_MISMATCH`     |
+| CRC word        | `ERR_CRC_MISMATCH`     |
+
+**Encoder — defensive**
+
+| Case                                       | Expected                 |
+|--------------------------------------------|--------------------------|
+| `outWords == NULL`                          | `ERR_NULL_ARG`           |
+| `outLen == NULL`                            | `ERR_NULL_ARG`           |
+| `payload == NULL`, `payloadWords == 0`      | `OK` (len 4)             |
+| `payload == NULL`, `payloadWords > 0`       | `ERR_NULL_ARG`           |
+| `outCapacity` short by 1                    | `ERR_BUFFER_TOO_SMALL`   |
+| `outCapacity` exactly required              | `OK`                     |
+| `payloadWords = 4096`                       | `OK` (len 4100)          |
+| `payloadWords = 4097`                       | `ERR_PAYLOAD_TOO_LARGE`  |
+
+**Boundary command / payload values** (all must round-trip `OK`)
+
+| Case                                         | Check |
+|----------------------------------------------|-------|
+| `cmdId = 0x0000`                              | recovered cmd id |
+| `cmdId = 0xFFFF`                              | recovered cmd id |
+| payload all `0x0000`                          | first/last preserved |
+| payload all `0xFFFF`                          | first/last preserved |
+| payload alternating `0xAAAA`/`0x5555`         | preserved |
+| `payload[0] = 0xA55A`                         | treated as payload, **not** a header |
+| payload word = a real CRC value               | treated as data; CRC still validates |
+
+**Failure output safety**
+
+| Case                                                 | Check |
+|------------------------------------------------------|-------|
+| sentinel-fill `outPkt`, parse CRC-corrupted frame    | returns `ERR_CRC_MISMATCH` |
+| after that failure                                    | `cmdId != frame's cmd`, and `cmdId/payloadWords == 0`, `payload == NULL` |
 
 The harness (its `main()` and `<stdio.h>` use) is compiled only when
 `SPI_PACKET_V1_HOST_TEST` is defined. This guard means that if

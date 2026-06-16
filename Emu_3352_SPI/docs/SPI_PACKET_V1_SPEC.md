@@ -1,8 +1,40 @@
 # SPI Packet V1 Specification
 
-Status: **Draft / Experimental (spec + pure-C skeleton only)**
-Scope: `WP_3352_SPI/Emu_3352_SPI`
+Status: **Draft / Experimental (spec + pure-C encoder/parser/streaming parser + host tests)**
+Repository: `ASR5K_WP_3352_SPI` split repo
+Scope: `Emu_3352_SPI`
 Owner module: `SPI_PacketV1/` (pure C, standalone)
+Current verification: A2 host test **PASS=126 FAIL=0**
+
+---
+
+## Repository Split Note
+
+This repository root is already the `WP_3352_SPI` level. Use `Emu_3352_SPI/...`
+paths in this split repo. Do not use the old monorepo prefix
+`WP_3352_SPI/Emu_3352_SPI/...` inside this repo.
+
+---
+
+## A2 Close Status
+
+A2 streaming parser is implemented.
+
+A2 adds:
+
+- `SPI_PACKET_V1_IN_PROGRESS`
+- `SpiPacketV1_StreamState`
+- `SpiPacketV1_StreamParser`
+- `SpiPacketV1_StreamInit()`
+- `SpiPacketV1_StreamReset()`
+- `SpiPacketV1_StreamFeedWord()`
+- `SpiPacketV1_StreamFinalize()`
+
+A2 remains pure-C and standalone.
+No SPIB runtime integration.
+No DMA integration.
+No legacy register protocol replacement.
+No syscfg/linker/CCS build changes.
 
 ---
 

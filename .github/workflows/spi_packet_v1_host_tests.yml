@@ -64,3 +64,22 @@ jobs:
           else
             echo "A5 loopback files not present; skipping A5 test."
           fi
+
+      - name: A6-1 - PING probe host test (conditional)
+        working-directory: Emu_3352_SPI
+        run: |
+          set -euo pipefail
+          if [ -f SPI_PacketV1/spi_packet_v1_probe.c ] && [ -f SPI_PacketV1/spi_packet_v1_probe_test.c ]; then
+            gcc -std=c99 -Wall -Wextra -Werror -DSPI_PACKET_V1_HOST_TEST \
+              SPI_PacketV1/spi_packet_crc16.c \
+              SPI_PacketV1/spi_packet_v1.c \
+              SPI_PacketV1/spi_packet_v1_dispatch.c \
+              SPI_PacketV1/spi_packet_v1_loopback.c \
+              SPI_PacketV1/spi_packet_v1_probe.c \
+              SPI_PacketV1/spi_packet_v1_probe_test.c \
+              -o spi_packet_v1_probe_test
+            ./spi_packet_v1_probe_test | tee a6_probe.log
+            grep -E "PASS=14[[:space:]]+FAIL=0" a6_probe.log
+          else
+            echo "A6-1 probe files not present; skipping A6-1 probe test."
+          fi

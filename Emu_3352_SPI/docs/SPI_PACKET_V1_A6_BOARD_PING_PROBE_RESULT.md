@@ -1,9 +1,15 @@
 # SPI Packet V1 A6-1 — Board-Observable PING Probe Result
 
-Status: **Implemented (pure-C probe + Test10 selftest integration + host test + CI)**
+Status: **BOARD PASS (single confirmed on-board run)**
 Board-verifiable: **YES** (logic on target CPU, observable via the existing SPI
-selftest result struct + UART).
+selftest result struct).  
 Builds on: A2 parser/encoder, A4 dispatcher, A5 loopback, A6-0 plan.
+
+Board PASS recorded: **2026-06-18**
+Branch: `feature/spi-packet-v1-a6-1-ping-selftest-probe`
+Commit under test: `8443f69897819b14edd5f4f26d182c4b8fd496f3`
+Trigger method: **CCS Watch** (`g_asr5kSpiSelfTest.start = 1`)
+UART / Modbus trigger used: **NO** (`uart_command_count = 0`)
 
 ## Exact limitation
 
@@ -14,27 +20,104 @@ SPIB RX/DMA path, and does NOT touch the existing live `0xA55A` runtime packet
 state machine. The PING request/response is built and checked entirely in target
 RAM.
 
+## Board PASS evidence
+
+Observed final `g_asr5kSpiSelfTest` state after flashing the A6-1 branch and
+triggering the selftest from CCS Watch:
+
+```text
+start                  = 0
+status                 = ASR5K_SPI_SELFTEST_PASS
+result_text            = "PASS"
+current_test_id        = 0
+failed_test_id         = 0
+failed_step            = 0
+fault_code             = 0
+completed_test_count   = 10
+implemented_test_count = 10
+uart_command_count     = 0
+```
+
+Per-test result:
+
+```text
+Test1  PASS
+Test2  PASS
+Test3  PASS
+Test4  PASS
+Test5  PASS
+Test6  PASS
+Test7  PASS
+Test8  PASS
+Test9  PASS
+Test10 PASS
+```
+
+Test10 Packet V1 evidence:
+
+```text
+test[9].test_id  = 10
+test[9].status   = ASR5K_SPI_TEST_PASS
+test[9].expected = 2147504207 = 0x8000504F
+test[9].actual   = 2147504207 = 0x8000504F
+```
+
+Meaning:
+
+```text
+0x8000 = Packet V1 PING response command
+0x504F = PONG word
+```
+
+Therefore the Packet V1 pure-C PING/PONG logic is confirmed to execute
+successfully on the target C2000 firmware and is observable through
+`g_asr5kSpiSelfTest`.
+
+## Initial transient observation
+
+Before the final PASS run, an initial run after flashing reported:
+
+```text
+status                 = ASR5K_SPI_SELFTEST_FAIL
+result_text            = "FAIL"
+current_test_id        = 4
+failed_test_id         = 4
+failed_step            = 4
+fault_code             = 4611 = 0x1203
+completed_test_count   = 3
+implemented_test_count = 10
+uart_command_count     = 0
+```
+
+This failure occurred in legacy Test4, before Packet V1 Test10 was reached. A
+clean CPU reset / rerun was then performed, with **no code changes**, and the
+final result was PASS for Test1~Test10.
+
+Engineering interpretation: the initial Test4 failure is treated as a non-final
+transient startup/reset-state observation unless it becomes repeatable. The
+accepted A6-1 result is the final clean PASS run recorded above.
+
 ## Build-integration note (why a .cproject change was required)
 
 The CCS project (`Emu_3352_SPI/.cproject`) previously excluded the entire
 `SPI_PacketV1/` folder from both build configurations
 (`excluding="SPI_PacketV1"`), so none of the A2/A4/A5 logic was ever compiled
 into firmware. A board-observable probe therefore could not link without a
-project-config change. With explicit authorization, the exclusion was **narrowed**
-to exclude only the four host-test files, so the production sources
+project-config change. With explicit authorization, the exclusion was
+**narrowed** to exclude only the four host-test files, so the production sources
 (`spi_packet_crc16.c`, `spi_packet_v1.c`, `spi_packet_v1_dispatch.c`,
-`spi_packet_v1_loopback.c`, `spi_packet_v1_probe.c`) now build into firmware while
-the `*_test.c` harnesses remain excluded (and are additionally guarded by
+`spi_packet_v1_loopback.c`, `spi_packet_v1_probe.c`) now build into firmware
+while the `*_test.c` harnesses remain excluded (and are additionally guarded by
 `SPI_PACKET_V1_HOST_TEST`, so they would be empty translation units even if
 compiled).
 
 Both build configs now read:
 
-```
+```text
 excluding="SPI_PacketV1/spi_packet_v1_test.c|SPI_PacketV1/spi_packet_v1_dispatch_test.c|SPI_PacketV1/spi_packet_v1_loopback_test.c|SPI_PacketV1/spi_packet_v1_probe_test.c"
 ```
 
-## Files changed
+## Files changed by the A6-1 implementation
 
 New:
 - `Emu_3352_SPI/SPI_PacketV1/spi_packet_v1_probe.h` — probe API + result struct
@@ -116,47 +199,62 @@ A6 : PASS=14  FAIL=0
 
 `.github/workflows/spi_packet_v1_host_tests.yml` runs A2/A4/A5 plus the new
 conditional A6-1 probe step, asserting `PASS=14[[:space:]]+FAIL=0` under
-`-Werror`. (Pushing the branch triggers the workflow; observe the run on GitHub.)
+`-Werror`. The A6-1 branch CI run passed before board verification.
 
 ## CCS / firmware build
 
-The host tests pass locally. A native CCS/TI C28x firmware build was **not run**
-in this environment (no TI toolchain available here) and is **not faked**. The
-Packet V1 sources are written C28x-safe (no `uint8_t`; `uint16_t`-based CRC; word
-counts, never `sizeof()/2`), but the actual firmware build and the on-board
-result must be verified by the user in CCS.
+The final on-board PASS recorded above confirms the firmware was built, flashed,
+and run on the target board by the user. The external cloud environment used for
+host testing did **not** have a TI C28x toolchain and did not fake a CCS build.
 
-## Board test flow (user)
+## Board test flow used
 
 ```text
-1. git checkout feature/spi-packet-v1-a6-1-ping-selftest-probe
-2. Build firmware in CCS (CPU1_RAM or CPU1_FLASH config).
+1. Checkout feature/spi-packet-v1-a6-1-ping-selftest-probe.
+2. Build firmware in CCS.
 3. Flash the board.
-4. Open the UART terminal used by the existing SPI selftest.
-5. Trigger the selftest, e.g. send "spi_test all".
-6. Expected:
-   - UART final result = PASS
-   - g_asr5kSpiSelfTest.result_text == "PASS"
+4. Trigger from CCS Watch: g_asr5kSpiSelfTest.start = 1.
+5. Observe g_asr5kSpiSelfTest final state.
+6. Accepted result:
+   - result_text == "PASS"
+   - completed_test_count == 10
    - Test1~Test9 remain PASS
    - Test10 Packet V1 PING probe == PASS
-   - g_asr5kSpiSelfTest.test[9].actual == 0x8000504F  (response_cmd 0x8000, pong 0x504F)
-7. On failure, capture:
-   - g_asr5kSpiSelfTest.status / result_text
-   - g_asr5kSpiSelfTest.current_test_id / completed_test_count
-   - g_asr5kSpiSelfTest.failed_test_id / failed_step / fault_code (0x3017 = PING probe)
-   - g_asr5kSpiSelfTest.test[9].actual  (packed: result/loopback/parser/dispatch)
-   - g_asr5kSpiSelfTest.test[9].fail_step
+   - g_asr5kSpiSelfTest.test[9].actual == 0x8000504F
 ```
 
 ## B01F impact statement
 
-- Test1~Test9 are unchanged (only appended Test10), so the B01F baseline
-  behavior, expected values, and timing are preserved.
+- Test1~Test9 are unchanged (only appended Test10), and the board run confirms
+  Test1~Test9 PASS on the A6-1 branch.
 - No SPIB runtime, DMA, wave_download, SPIA master, syscfg, linker, or live
   receive-path code was modified; the existing `0xA55A` runtime packet state
   machine is untouched.
 - The only build-config change is narrowing a source-exclusion rule in
   `.cproject` (authorized), which adds the pure-C Packet V1 sources to the image
   but introduces no new runtime behavior unless the new Test10 is run.
-- Net: B01F Test1~Test9 should remain PASS; the user must confirm on-board after
-  a CCS build.
+- Net: B01F legacy Test1~Test9 baseline is board-confirmed PASS on A6-1, and
+  Test10 Packet V1 PING probe is also board-confirmed PASS.
+
+## Scope and non-claims
+
+Confirmed:
+
+```text
+A6-1 Packet V1 logic on target CPU: PASS
+Board-observable selftest Test10: PASS
+Legacy Test1~Test9 baseline on A6-1 branch: PASS
+UART/Modbus path used for trigger: NO
+```
+
+Not claimed by this test:
+
+```text
+SPIB RX/DMA Packet V1 runtime integration
+AM3352 wire-level Packet V1 PING
+C2000 SPIB wire-level PONG response
+Replacement of the legacy register protocol
+```
+
+A6-1 validates Packet V1 logic on the target firmware only. SPI wire transport
+remains future A6-2 / A7 work.

@@ -1,0 +1,85 @@
+name: SPI Packet V1 Host Tests
+
+on:
+  push:
+    branches:
+      - "feature/spi-packet-v1-*"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  host-tests:
+    name: host-tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show compiler version
+        run: gcc --version
+
+      - name: A2 - parser / encoder / CRC host test
+        working-directory: Emu_3352_SPI
+        run: |
+          set -euo pipefail
+          gcc -std=c99 -Wall -Wextra -Werror -DSPI_PACKET_V1_HOST_TEST \
+            SPI_PacketV1/spi_packet_crc16.c \
+            SPI_PacketV1/spi_packet_v1.c \
+            SPI_PacketV1/spi_packet_v1_test.c \
+            -o spi_packet_v1_test
+          ./spi_packet_v1_test | tee a2.log
+          grep -E "PASS=126[[:space:]]+FAIL=0" a2.log
+
+      - name: A4 - dispatcher host test (conditional)
+        working-directory: Emu_3352_SPI
+        run: |
+          set -euo pipefail
+          if [ -f SPI_PacketV1/spi_packet_v1_dispatch.c ] && [ -f SPI_PacketV1/spi_packet_v1_dispatch_test.c ]; then
+            gcc -std=c99 -Wall -Wextra -Werror -DSPI_PACKET_V1_HOST_TEST \
+              SPI_PacketV1/spi_packet_v1_dispatch.c \
+              SPI_PacketV1/spi_packet_v1_dispatch_test.c \
+              -o spi_packet_v1_dispatch_test
+            ./spi_packet_v1_dispatch_test | tee a4.log
+            grep -E "PASS=104[[:space:]]+FAIL=0" a4.log
+          else
+            echo "A4 dispatcher files not present; skipping A4 test."
+          fi
+
+      - name: A5 - loopback host test (conditional)
+        working-directory: Emu_3352_SPI
+        run: |
+          set -euo pipefail
+          if [ -f SPI_PacketV1/spi_packet_v1_loopback.c ] && [ -f SPI_PacketV1/spi_packet_v1_loopback_test.c ]; then
+            gcc -std=c99 -Wall -Wextra -Werror -DSPI_PACKET_V1_HOST_TEST \
+              SPI_PacketV1/spi_packet_crc16.c \
+              SPI_PacketV1/spi_packet_v1.c \
+              SPI_PacketV1/spi_packet_v1_dispatch.c \
+              SPI_PacketV1/spi_packet_v1_loopback.c \
+              SPI_PacketV1/spi_packet_v1_loopback_test.c \
+              -o spi_packet_v1_loopback_test
+            ./spi_packet_v1_loopback_test | tee a5.log
+            grep -E "PASS=107[[:space:]]+FAIL=0" a5.log
+          else
+            echo "A5 loopback files not present; skipping A5 test."
+          fi
+
+      - name: A6-1 - PING probe host test (conditional)
+        working-directory: Emu_3352_SPI
+        run: |
+          set -euo pipefail
+          if [ -f SPI_PacketV1/spi_packet_v1_probe.c ] && [ -f SPI_PacketV1/spi_packet_v1_probe_test.c ]; then
+            gcc -std=c99 -Wall -Wextra -Werror -DSPI_PACKET_V1_HOST_TEST \
+              SPI_PacketV1/spi_packet_crc16.c \
+              SPI_PacketV1/spi_packet_v1.c \
+              SPI_PacketV1/spi_packet_v1_dispatch.c \
+              SPI_PacketV1/spi_packet_v1_loopback.c \
+              SPI_PacketV1/spi_packet_v1_probe.c \
+              SPI_PacketV1/spi_packet_v1_probe_test.c \
+              -o spi_packet_v1_probe_test
+            ./spi_packet_v1_probe_test | tee a6_probe.log
+            grep -E "PASS=14[[:space:]]+FAIL=0" a6_probe.log
+          else
+            echo "A6-1 probe files not present; skipping A6-1 probe test."
+          fi

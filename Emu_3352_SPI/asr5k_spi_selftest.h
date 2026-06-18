@@ -17,6 +17,11 @@
  *   Test9  Full 4096 download -> status -> validate -> activate
  *                                         long-transfer stability, zero DMA loss,
  *                                         parser counters, final page state LOCKED
+ *   Test10 SPI Packet V1 PING probe       pure-C A2/A4/A5 PING->PONG executed on
+ *                                         target CPU (board-observable). One benign
+ *                                         register read drives the engine; the PING
+ *                                         itself is validated in-memory. Does NOT
+ *                                         test SPI wire transport / SPIB / DMA.
  */
 
 #ifndef ASR5K_SPI_SELFTEST_H_
@@ -24,7 +29,7 @@
 
 #include <stdint.h>
 
-#define ASR5K_SPI_SELFTEST_RECORD_COUNT 9U
+#define ASR5K_SPI_SELFTEST_RECORD_COUNT 10U
 
 typedef enum {
     ASR5K_SPI_TEST_ID_1 = 1,
@@ -35,7 +40,8 @@ typedef enum {
     ASR5K_SPI_TEST_ID_6,
     ASR5K_SPI_TEST_ID_7,
     ASR5K_SPI_TEST_ID_8,
-    ASR5K_SPI_TEST_ID_9
+    ASR5K_SPI_TEST_ID_9,
+    ASR5K_SPI_TEST_ID_10
 } ASR5K_SPI_TEST_ID_e;
 
 typedef enum {
@@ -89,7 +95,8 @@ typedef enum {
     ASR5K_SPI_FAIL_STEP_WAVE_SAMPLE_WRITE,  /* Test6: window write content   */
     ASR5K_SPI_FAIL_STEP_WAVE_METADATA,      /* Test6/7: count/addr/complete  */
     ASR5K_SPI_FAIL_STEP_WAVE_PRECHECK,      /* Test8: validator gatekeeping  */
-    ASR5K_SPI_FAIL_STEP_STEP_RESULT         /* generic per-step result check */
+    ASR5K_SPI_FAIL_STEP_STEP_RESULT,        /* generic per-step result check */
+    ASR5K_SPI_FAIL_STEP_PKTV1_PING          /* Test10: Packet V1 PING probe  */
 } ASR5K_SPI_FAIL_STEP_e;
 
 typedef struct {

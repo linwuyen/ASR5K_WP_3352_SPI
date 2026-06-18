@@ -132,7 +132,7 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry excluding="SPI_PacketV1" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+						<entry excluding="SPI_PacketV1/spi_packet_v1_test.c|SPI_PacketV1/spi_packet_v1_dispatch_test.c|SPI_PacketV1/spi_packet_v1_loopback_test.c|SPI_PacketV1/spi_packet_v1_probe_test.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>
@@ -267,7 +267,7 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry excluding="SPI_PacketV1" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+						<entry excluding="SPI_PacketV1/spi_packet_v1_test.c|SPI_PacketV1/spi_packet_v1_dispatch_test.c|SPI_PacketV1/spi_packet_v1_loopback_test.c|SPI_PacketV1/spi_packet_v1_probe_test.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>

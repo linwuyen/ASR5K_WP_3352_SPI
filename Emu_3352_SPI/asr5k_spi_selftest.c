@@ -21,12 +21,13 @@
 #include "asr5k_spi_selftest_port.h"
 #include "board.h"
 #include "driverlib.h"
+#include "SPI_PacketV1/spi_packet_v1_probe.h"   /* Test10: pure-C PING probe */
 
 /* ========================================================================
  * Engine configuration
  * ======================================================================== */
 #define SELFTEST_WAIT_LIMIT      5000000UL
-#define SELFTEST_EXECUTED_COUNT  9U
+#define SELFTEST_EXECUTED_COUNT  10U
 #define SELFTEST_UART_RX_SIZE    16U
 #define SELFTEST_UART_TX_SIZE    96U
 
@@ -60,6 +61,7 @@
 #define SELFTEST_FAULT_WAVE_METADATA     0x3014U  /* Test6/7 metadata       */
 #define SELFTEST_FAULT_PRECHECK          0x3015U  /* Test8 validator gate   */
 #define SELFTEST_FAULT_WAVE_FINAL        0x3016U  /* Test9 final state      */
+#define SELFTEST_FAULT_PKTV1_PING        0x3017U  /* Test10 PING probe      */
 
 /* ========================================================================
  * Engine types
@@ -128,6 +130,7 @@ static uint16_t Validate_Test6_SampleWrite(volatile ST_ASR5K_SPI_TEST_RESULT *pR
 static uint16_t Validate_Test7_IncompleteStatus(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
 static uint16_t Validate_Test8_ValidatePrecheck(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
 static uint16_t Validate_Test9_FullPipeline(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
+static uint16_t Validate_Test10_PacketV1Ping(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
 
 /* ========================================================================
  * Test scripts
@@ -224,6 +227,16 @@ static const ST_SELFTEST_STEP s_test9Steps[] = {
       WAVE_PAGE_STATE_LOCKED, 1U, ASR5K_SPI_FAIL_STEP_WAVE_ACTIVATE, 0 }
 };
 
+/* ---- Test10: SPI Packet V1 PING probe -----------------------------------
+ * One benign register read (identical to Test2: READ 0x0400) drives the step
+ * engine and re-confirms the legacy path; the Packet V1 PING->PONG itself is
+ * validated purely in-memory in Validate_Test10_PacketV1Ping().            */
+#pragma DATA_SECTION(s_test10Steps, "asr5k_spi_selftest_config")
+static const ST_SELFTEST_STEP s_test10Steps[] = {
+    { SPI_MASTER_TEST_CMD_READ, 0x0400U, 0x0000U,
+      0U, 0U, ASR5K_SPI_FAIL_STEP_NONE, 0 }
+};
+
 /* ---- Master test table ----------------------------------------------------
  * u32DmaDoneDelta: one register write/read = 2 frames.
  *   T5: 1*2   T6: 4*2   T7: 1*2   T8: 1*2
@@ -262,7 +275,10 @@ static const ST_SELFTEST_TEST s_testTable[SELFTEST_EXECUTED_COUNT] = {
 
     { ASR5K_SPI_TEST_ID_9, s_test9Steps, 5U,
       (uint32_t)WAVE_PAGE_STATE_LOCKED, 4107U, 1U,
-      Validate_Test9_FullPipeline }
+      Validate_Test9_FullPipeline },
+
+    { ASR5K_SPI_TEST_ID_10, s_test10Steps, 1U,
+      0x8000504FUL, 2U, 0U, Validate_Test10_PacketV1Ping }
 };
 
 /* ========================================================================
@@ -781,6 +797,34 @@ static uint16_t Validate_Test9_FullPipeline(
     }
 
     pResult->actual = (uint32_t)WAVE_PAGE_STATE_LOCKED;
+    return 0U;
+}
+
+/* ---- Test10: SPI Packet V1 PING probe (pure-C logic on target CPU) -------
+ * Board-observable proof that the A2/A4/A5 PING->PONG path executes correctly
+ * on the target. The single benign register read (Test10 step) only drives the
+ * existing step engine; the Packet V1 PING itself is built and checked entirely
+ * in memory here. This does NOT exercise SPI wire transport / SPIB / DMA.    */
+static uint16_t Validate_Test10_PacketV1Ping(
+    volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep)
+{
+    ST_PKTV1_PROBE_RESULT probe;
+    PKTV1_PROBE_RESULT_e  rc = SpiPacketV1_RunPingProbe(&probe);
+
+    if (rc != PKTV1_PROBE_OK) {
+        /* Pack per-stage diagnostics into actual for failure analysis. */
+        pResult->actual =
+            (((uint32_t)probe.result          & 0xFFUL) << 24) |
+            (((uint32_t)probe.loopback_result & 0xFFUL) << 16) |
+            (((uint32_t)probe.parser_result   & 0xFFUL) << 8)  |
+             ((uint32_t)probe.dispatch_result & 0xFFUL);
+        *pFailStep = ASR5K_SPI_FAIL_STEP_PKTV1_PING;
+        return SELFTEST_FAULT_PKTV1_PING;
+    }
+
+    /* Success: observable actual = response_cmd<<16 | pong = 0x8000504F. */
+    pResult->actual =
+        ((uint32_t)probe.response_cmd << 16) | (uint32_t)probe.pong_word;
     return 0U;
 }
 

@@ -135,10 +135,15 @@ PKTV1_WIRE_PROBE_RESULT_e SpiPacketV1_WireProbe_FeedWords(
     uint16_t i;
     PKTV1_WIRE_PROBE_RESULT_e rc = PKTV1_WIRE_PROBE_OK;
 
-    if ((p == 0) || (words == 0))
+    if (p == 0)
     {
         return PKTV1_WIRE_PROBE_ERR_NULL;
     }
+    if ((words == 0) && (word_count > 0U))
+    {
+        return PKTV1_WIRE_PROBE_ERR_NULL;
+    }
+    /* word_count == 0 is a valid no-op (OK), even when words == NULL. */
 
     for (i = 0U; i < word_count; ++i)
     {

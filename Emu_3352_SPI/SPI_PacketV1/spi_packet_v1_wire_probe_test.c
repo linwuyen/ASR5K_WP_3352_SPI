@@ -88,7 +88,30 @@ static void test_null_pointer_rejected(void)
           "null: FeedWords(NULL probe) -> ERR_NULL");
     check(SpiPacketV1_WireProbe_FeedWords(&p, NULL, 4U)
               == PKTV1_WIRE_PROBE_ERR_NULL,
-          "null: FeedWords(NULL words) -> ERR_NULL");
+          "null: FeedWords(NULL words, count>0) -> ERR_NULL");
+}
+
+/* 2b. FeedWords with word_count == 0 is a valid no-op (OK), per header. */
+static void test_feedwords_zero_count(void)
+{
+    ST_PKTV1_WIRE_PROBE p;
+    uint16_t buf[PKTV1_WIRE_PROBE_MAX_FRAME_WORDS];
+    PKTV1_WIRE_PROBE_RESULT_e rc;
+
+    SpiPacketV1_WireProbe_Reset(&p);
+
+    /* NULL words is allowed when word_count == 0 (nothing is dereferenced). */
+    rc = SpiPacketV1_WireProbe_FeedWords(&p, NULL, 0U);
+    check(rc == PKTV1_WIRE_PROBE_OK, "zerocount: FeedWords(&p, NULL, 0) -> OK");
+    check(p.state == PKTV1_WIRE_PROBE_IDLE, "zerocount: state IDLE after (NULL,0)");
+
+    /* Valid buffer with count 0 is OK and must not alter state. */
+    rc = SpiPacketV1_WireProbe_FeedWords(&p, buf, 0U);
+    check(rc == PKTV1_WIRE_PROBE_OK, "zerocount: FeedWords(&p, buf, 0) -> OK");
+    check(p.state == PKTV1_WIRE_PROBE_IDLE, "zerocount: state IDLE after (buf,0)");
+    check(p.words_seen == 0U, "zerocount: words_seen unchanged");
+    check(p.frame_ok_count == 0U, "zerocount: frame_ok_count unchanged");
+    check(p.frame_error_count == 0U, "zerocount: frame_error_count unchanged");
 }
 
 /* 3. Idle ignores non-header word. */
@@ -113,7 +136,7 @@ static void test_valid_ping_recognized(void)
     PKTV1_WIRE_PROBE_RESULT_e rc;
 
     SpiPacketV1_WireProbe_Reset(&p);
-    len = build_frame(PKTV1_CMD_PING, NULL, 0U, buf, (uint16_t)sizeof(buf));
+    len = build_frame(PKTV1_CMD_PING, NULL, 0U, buf, PKTV1_WIRE_PROBE_MAX_FRAME_WORDS);
     rc  = SpiPacketV1_WireProbe_FeedWords(&p, buf, len);
 
     check(rc == PKTV1_WIRE_PROBE_OK, "ping: FeedWords returns OK");
@@ -135,7 +158,7 @@ static void test_valid_echo_with_payload(void)
     PKTV1_WIRE_PROBE_RESULT_e rc;
 
     SpiPacketV1_WireProbe_Reset(&p);
-    len = build_frame(PKTV1_CMD_ECHO, payload, 2U, buf, (uint16_t)sizeof(buf));
+    len = build_frame(PKTV1_CMD_ECHO, payload, 2U, buf, PKTV1_WIRE_PROBE_MAX_FRAME_WORDS);
     rc  = SpiPacketV1_WireProbe_FeedWords(&p, buf, len);
 
     check(rc == PKTV1_WIRE_PROBE_OK, "echo: FeedWords returns OK");
@@ -155,7 +178,7 @@ static void test_frame_split_single_word_feeds(void)
     PKTV1_WIRE_PROBE_RESULT_e rc = PKTV1_WIRE_PROBE_OK;
 
     SpiPacketV1_WireProbe_Reset(&p);
-    len = build_frame(PKTV1_CMD_PING, NULL, 0U, buf, (uint16_t)sizeof(buf));
+    len = build_frame(PKTV1_CMD_PING, NULL, 0U, buf, PKTV1_WIRE_PROBE_MAX_FRAME_WORDS);
 
     rc = SpiPacketV1_WireProbe_FeedWord(&p, buf[0]);
     check(rc == PKTV1_WIRE_PROBE_OK, "split: header word OK");
@@ -185,7 +208,7 @@ static void test_frame_fed_via_feedwords(void)
 
     SpiPacketV1_WireProbe_Reset(&p);
     len = build_frame(PKTV1_CMD_GET_VERSION, payload, 1U, buf,
-                      (uint16_t)sizeof(buf));
+                      PKTV1_WIRE_PROBE_MAX_FRAME_WORDS);
     rc  = SpiPacketV1_WireProbe_FeedWords(&p, buf, len);
 
     check(rc == PKTV1_WIRE_PROBE_OK, "feedwords: returns OK");
@@ -204,7 +227,7 @@ static void test_bad_crc_rejected(void)
     PKTV1_WIRE_PROBE_RESULT_e rc;
 
     SpiPacketV1_WireProbe_Reset(&p);
-    len = build_frame(PKTV1_CMD_ECHO, payload, 1U, buf, (uint16_t)sizeof(buf));
+    len = build_frame(PKTV1_CMD_ECHO, payload, 1U, buf, PKTV1_WIRE_PROBE_MAX_FRAME_WORDS);
     buf[len - 1U] = (uint16_t)(buf[len - 1U] ^ 0xFFFFU);   /* corrupt CRC word */
     rc = SpiPacketV1_WireProbe_FeedWords(&p, buf, len);
 
@@ -245,7 +268,7 @@ static void test_truncated_frame_collecting(void)
     PKTV1_WIRE_PROBE_RESULT_e rc;
 
     SpiPacketV1_WireProbe_Reset(&p);
-    len = build_frame(PKTV1_CMD_PING, NULL, 0U, buf, (uint16_t)sizeof(buf));
+    len = build_frame(PKTV1_CMD_PING, NULL, 0U, buf, PKTV1_WIRE_PROBE_MAX_FRAME_WORDS);
     /* Feed only header + command (2 of 4 words). */
     rc = SpiPacketV1_WireProbe_FeedWords(&p, buf, 2U);
     (void)len;
@@ -270,7 +293,7 @@ static void test_noise_before_header_ignored(void)
     check(rc == PKTV1_WIRE_PROBE_OK, "noise: ignored, returns OK");
     check(p.state == PKTV1_WIRE_PROBE_IDLE, "noise: still IDLE");
 
-    len = build_frame(PKTV1_CMD_PING, NULL, 0U, buf, (uint16_t)sizeof(buf));
+    len = build_frame(PKTV1_CMD_PING, NULL, 0U, buf, PKTV1_WIRE_PROBE_MAX_FRAME_WORDS);
     rc  = SpiPacketV1_WireProbe_FeedWords(&p, buf, len);
     check(p.state == PKTV1_WIRE_PROBE_FRAME_OK, "noise: frame after noise OK");
     check(p.frame_ok_count == 1U, "noise: frame_ok_count 1");
@@ -285,7 +308,7 @@ static void test_two_frames_with_reset(void)
     uint16_t len;
 
     SpiPacketV1_WireProbe_Reset(&p);
-    len = build_frame(PKTV1_CMD_PING, NULL, 0U, buf, (uint16_t)sizeof(buf));
+    len = build_frame(PKTV1_CMD_PING, NULL, 0U, buf, PKTV1_WIRE_PROBE_MAX_FRAME_WORDS);
     (void)SpiPacketV1_WireProbe_FeedWords(&p, buf, len);
     check(p.frame_ok_count == 1U, "two: frame1 ok_count 1");
 
@@ -293,7 +316,7 @@ static void test_two_frames_with_reset(void)
     check(p.frame_ok_count == 0U, "two: reset clears counters");
     check(p.state == PKTV1_WIRE_PROBE_IDLE, "two: reset state IDLE");
 
-    len = build_frame(PKTV1_CMD_ECHO, payload, 1U, buf, (uint16_t)sizeof(buf));
+    len = build_frame(PKTV1_CMD_ECHO, payload, 1U, buf, PKTV1_WIRE_PROBE_MAX_FRAME_WORDS);
     (void)SpiPacketV1_WireProbe_FeedWords(&p, buf, len);
     check(p.state == PKTV1_WIRE_PROBE_FRAME_OK, "two: frame2 FRAME_OK");
     check(p.cmd_id == PKTV1_CMD_ECHO, "two: frame2 cmd_id 0x8003");
@@ -308,7 +331,7 @@ static void test_payload_length_zero_accepted(void)
     PKTV1_WIRE_PROBE_RESULT_e rc;
 
     SpiPacketV1_WireProbe_Reset(&p);
-    len = build_frame(PKTV1_CMD_GET_CAPS, NULL, 0U, buf, (uint16_t)sizeof(buf));
+    len = build_frame(PKTV1_CMD_GET_CAPS, NULL, 0U, buf, PKTV1_WIRE_PROBE_MAX_FRAME_WORDS);
     rc  = SpiPacketV1_WireProbe_FeedWords(&p, buf, len);
 
     check(rc == PKTV1_WIRE_PROBE_OK, "zerolen: FeedWords OK");
@@ -325,7 +348,7 @@ static void test_command_id_preserved(void)
     uint16_t len;
 
     SpiPacketV1_WireProbe_Reset(&p);
-    len = build_frame(PKTV1_CMD_ECHO, payload, 1U, buf, (uint16_t)sizeof(buf));
+    len = build_frame(PKTV1_CMD_ECHO, payload, 1U, buf, PKTV1_WIRE_PROBE_MAX_FRAME_WORDS);
     (void)SpiPacketV1_WireProbe_FeedWords(&p, buf, len);
 
     check(p.cmd_id == PKTV1_CMD_ECHO, "cmdid: preserved == 0x8003");
@@ -341,7 +364,7 @@ static void test_crc_fields_exposed_on_error(void)
     uint16_t good_crc;
 
     SpiPacketV1_WireProbe_Reset(&p);
-    len      = build_frame(PKTV1_CMD_ECHO, payload, 1U, buf, (uint16_t)sizeof(buf));
+    len      = build_frame(PKTV1_CMD_ECHO, payload, 1U, buf, PKTV1_WIRE_PROBE_MAX_FRAME_WORDS);
     good_crc = buf[len - 1U];
     buf[len - 1U] = (uint16_t)(good_crc ^ 0x0001U);   /* corrupt one bit */
     (void)SpiPacketV1_WireProbe_FeedWords(&p, buf, len);
@@ -365,6 +388,7 @@ int main(void)
 
     test_reset_initializes_state();
     test_null_pointer_rejected();
+    test_feedwords_zero_count();
     test_idle_ignores_non_header();
     test_valid_ping_recognized();
     test_valid_echo_with_payload();

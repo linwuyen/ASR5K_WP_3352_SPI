@@ -96,7 +96,7 @@ jobs:
               SPI_PacketV1/spi_packet_v1_wire_probe_test.c \
               -o spi_packet_v1_wire_probe_test
             ./spi_packet_v1_wire_probe_test | tee a6_3a_wire.log
-            grep -E "PASS=80[[:space:]]+FAIL=0" a6_3a_wire.log
+            grep -E "PASS=87[[:space:]]+FAIL=0" a6_3a_wire.log
           else
             echo "A6-3A wire probe files not present; skipping A6-3A test."
           fi

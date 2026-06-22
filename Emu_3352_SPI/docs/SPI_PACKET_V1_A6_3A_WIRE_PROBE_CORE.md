@@ -1,6 +1,6 @@
 # SPI Packet V1 A6-3A - Passive Wire Recognizer Core (Pure-C, Host-Test Only)
 
-Status: **HOST TEST PASS** (`PASS=80 FAIL=0`, gcc `-std=c99 -Wall -Wextra -Werror`)
+Status: **HOST TEST PASS** (`PASS=87 FAIL=0`, gcc `-std=c99 -Wall -Wextra -Werror`)
 Board-verifiable: **NO** (pure-C logic only; no firmware behavior change)
 Wire-level verified: **NO**
 Builds on: A2 parser/encoder + CRC16, A6-1 board PING probe, A6-2 wire probe plan.
@@ -172,12 +172,17 @@ gcc -std=c99 -Wall -Wextra -Werror -DSPI_PACKET_V1_HOST_TEST \
 ./spi_packet_v1_wire_probe_test
 ```
 
-The harness covers the 16 required scenarios (some with several assertions):
-reset init, NULL rejection, idle ignores non-header, valid PING, valid ECHO with
-payload, single-word split feed, `FeedWords()` feed, bad CRC, declared length too
-large, truncated frame stays collecting, noise before header, two frames with
-reset between, zero-length payload accepted, command id preserved, CRC
-actual/expected exposed on error, and the compile-time guard.
+The harness covers the required scenarios (some with several assertions):
+reset init, NULL rejection, `FeedWords()` zero-count no-op (incl. NULL words),
+idle ignores non-header, valid PING, valid ECHO with payload, single-word split
+feed, `FeedWords()` feed, bad CRC, declared length too large, truncated frame
+stays collecting, noise before header, two frames with reset between, zero-length
+payload accepted, command id preserved, CRC actual/expected exposed on error, and
+the compile-time guard.
+
+Host-test frames are built with the real encoder using an explicit word-count
+capacity (`PKTV1_WIRE_PROBE_MAX_FRAME_WORDS`), never `sizeof(buffer)`, to stay
+correct on C28x where `sizeof(uint16_t) == 1`.
 
 Firmware-build harmlessness was verified by compiling the test file **without**
 `-DSPI_PACKET_V1_HOST_TEST`: it produces an empty translation unit (no `main`,
@@ -188,7 +193,7 @@ no `stdio`), exactly like the A2/A4/A5/A6-1 harnesses.
 ## 7. Host test result
 
 ```text
-A6-3A wire-probe core: PASS=80  FAIL=0
+A6-3A wire-probe core: PASS=87  FAIL=0
 gcc -std=c99 -Wall -Wextra -Werror, exit 0, 0 warnings
 ```
 
@@ -199,7 +204,7 @@ A2    : PASS=126 FAIL=0
 A4    : PASS=104 FAIL=0
 A5    : PASS=107 FAIL=0
 A6-1  : PASS=14  FAIL=0
-A6-3A : PASS=80  FAIL=0
+A6-3A : PASS=87  FAIL=0
 ```
 
 Existing A2/A4/A5/A6-1 results are unchanged by this task.
@@ -213,7 +218,7 @@ after the A6-1 step. It compiles with `-std=c99 -Wall -Wextra -Werror`, runs the
 recognizer test, and asserts:
 
 ```text
-grep -E "PASS=80[[:space:]]+FAIL=0"
+grep -E "PASS=87[[:space:]]+FAIL=0"
 ```
 
 The A2/A4/A5/A6-1 steps are unchanged. The step is guarded by an

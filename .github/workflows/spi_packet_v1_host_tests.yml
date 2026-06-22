@@ -83,3 +83,20 @@ jobs:
           else
             echo "A6-1 probe files not present; skipping A6-1 probe test."
           fi
+
+      - name: A6-3A - passive wire recognizer host test (conditional)
+        working-directory: Emu_3352_SPI
+        run: |
+          set -euo pipefail
+          if [ -f SPI_PacketV1/spi_packet_v1_wire_probe.c ] && [ -f SPI_PacketV1/spi_packet_v1_wire_probe_test.c ]; then
+            gcc -std=c99 -Wall -Wextra -Werror -DSPI_PACKET_V1_HOST_TEST \
+              SPI_PacketV1/spi_packet_crc16.c \
+              SPI_PacketV1/spi_packet_v1.c \
+              SPI_PacketV1/spi_packet_v1_wire_probe.c \
+              SPI_PacketV1/spi_packet_v1_wire_probe_test.c \
+              -o spi_packet_v1_wire_probe_test
+            ./spi_packet_v1_wire_probe_test | tee a6_3a_wire.log
+            grep -E "PASS=80[[:space:]]+FAIL=0" a6_3a_wire.log
+          else
+            echo "A6-3A wire probe files not present; skipping A6-3A test."
+          fi

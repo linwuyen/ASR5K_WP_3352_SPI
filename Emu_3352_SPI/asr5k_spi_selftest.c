@@ -23,11 +23,27 @@
 #include "driverlib.h"
 #include "SPI_PacketV1/spi_packet_v1_probe.h"   /* Test10: pure-C PING probe */
 
+#if (SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1)
+#include "SPI_PacketV1/spi_packet_v1_wire_probe.h" /* Test11: recognizer snapshot */
+
+/* A6-3B passive wire probe accessors, defined in SPIB_Slave/spi_b_slave.c.
+ * Declared locally under the same guard so spi_slave.h is NOT modified. */
+extern void     SPIB_PacketV1WireProbe_Reset(void);
+extern void     SPIB_PacketV1WireProbe_Arm(void);
+extern void     SPIB_PacketV1WireProbe_Disarm(void);
+extern uint16_t SPIB_PacketV1WireProbe_IsArmed(void);
+extern void     SPIB_PacketV1WireProbe_GetSnapshot(ST_PKTV1_WIRE_PROBE *out);
+#endif
+
 /* ========================================================================
  * Engine configuration
  * ======================================================================== */
 #define SELFTEST_WAIT_LIMIT      5000000UL
+#if (SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1)
+#define SELFTEST_EXECUTED_COUNT  11U
+#else
 #define SELFTEST_EXECUTED_COUNT  10U
+#endif
 #define SELFTEST_UART_RX_SIZE    16U
 #define SELFTEST_UART_TX_SIZE    96U
 
@@ -62,6 +78,15 @@
 #define SELFTEST_FAULT_PRECHECK          0x3015U  /* Test8 validator gate   */
 #define SELFTEST_FAULT_WAVE_FINAL        0x3016U  /* Test9 final state      */
 #define SELFTEST_FAULT_PKTV1_PING        0x3017U  /* Test10 PING probe      */
+#if (SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1)
+#define SELFTEST_FAULT_PKTV1_WIRE_TIMEOUT  0x3018U /* Test11 no external frame */
+#define SELFTEST_FAULT_PKTV1_WIRE_BAD_FRAME 0x3019U /* Test11 bad cmd/len/CRC  */
+#define PKTV1_WIRE_TEST_CMD_PING           0x8000U /* expected wire cmd_id     */
+#define PKTV1_WIRE_RX_OK_MARKER            0x504FU /* receive-OK marker (NOT a PONG) */
+/* Bounded wait for the external master's frame (poll-count, not wall-clock).
+ * Finite by construction so Test11 can never hang; tune on-board if needed. */
+#define SELFTEST_PKTV1_WIRE_WAIT_LIMIT     (SELFTEST_WAIT_LIMIT * 40UL)
+#endif
 
 /* ========================================================================
  * Engine types
@@ -131,6 +156,9 @@ static uint16_t Validate_Test7_IncompleteStatus(volatile ST_ASR5K_SPI_TEST_RESUL
 static uint16_t Validate_Test8_ValidatePrecheck(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
 static uint16_t Validate_Test9_FullPipeline(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
 static uint16_t Validate_Test10_PacketV1Ping(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
+#if (SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1)
+static uint16_t Validate_Test11_PktV1Wire(volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep);
+#endif
 
 /* ========================================================================
  * Test scripts
@@ -237,6 +265,18 @@ static const ST_SELFTEST_STEP s_test10Steps[] = {
       0U, 0U, ASR5K_SPI_FAIL_STEP_NONE, 0 }
 };
 
+#if (SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1)
+/* ---- Test11: passive Packet V1 wire receive -----------------------------
+ * No SPIA master command is issued. The engine diverts Test11 to a dedicated
+ * arm/wait/disarm flow (selfTestRunPktV1Wire); this benign NONE step entry only
+ * satisfies the table shape and is never executed. */
+#pragma DATA_SECTION(s_test11Steps, "asr5k_spi_selftest_config")
+static const ST_SELFTEST_STEP s_test11Steps[] = {
+    { SPI_MASTER_TEST_CMD_NONE, 0x0000U, 0x0000U,
+      0U, 0U, ASR5K_SPI_FAIL_STEP_NONE, 0 }
+};
+#endif
+
 /* ---- Master test table ----------------------------------------------------
  * u32DmaDoneDelta: one register write/read = 2 frames.
  *   T5: 1*2   T6: 4*2   T7: 1*2   T8: 1*2
@@ -279,6 +319,13 @@ static const ST_SELFTEST_TEST s_testTable[SELFTEST_EXECUTED_COUNT] = {
 
     { ASR5K_SPI_TEST_ID_10, s_test10Steps, 1U,
       0x8000504FUL, 2U, 0U, Validate_Test10_PacketV1Ping }
+#if (SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1)
+    ,
+    /* Test11 expects actual == 0x8000504F (cmd 0x8000 | RX-OK marker 0x504F).
+     * DMA-done delta is not engine-validated for Test11 (custom flow). */
+    { ASR5K_SPI_TEST_ID_11, s_test11Steps, 1U,
+      0x8000504FUL, 0U, 0U, Validate_Test11_PktV1Wire }
+#endif
 };
 
 /* ========================================================================
@@ -828,6 +875,20 @@ static uint16_t Validate_Test10_PacketV1Ping(
     return 0U;
 }
 
+#if (SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1)
+/* ---- Test11: passive Packet V1 wire receive (table placeholder validator) -
+ * Test11 is handled by the dedicated arm/wait/disarm flow selfTestRunPktV1Wire()
+ * and never reaches the generic step/validator path. This stub only fills the
+ * test-table row's function pointer; it is not executed. */
+static uint16_t Validate_Test11_PktV1Wire(
+    volatile ST_ASR5K_SPI_TEST_RESULT *pResult, uint16_t *pFailStep)
+{
+    (void)pResult;
+    (void)pFailStep;
+    return 0U;
+}
+#endif
+
 /* ========================================================================
  * Engine core
  * ======================================================================== */
@@ -1042,8 +1103,85 @@ static void completeCurrentStep(void)
     }
 }
 
+#if (SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1)
+/* Test11: passive Packet V1 wire receive. No SPIA master, no UART, no TX/PONG.
+ * Arms the SPIB passive probe, waits a bounded number of polls for ONE external
+ * Packet V1 PING frame, records the receive result on the existing selftest
+ * surface, and disarms on success / bad-frame / timeout. */
+static void selfTestRunPktV1Wire(void)
+{
+    volatile ST_ASR5K_SPI_TEST_RESULT *pResult = currentResult();
+    ST_PKTV1_WIRE_PROBE snap;
+
+    if (s_state == SELFTEST_STATE_START) {
+        readCounters(&pResult->baseline);
+        pResult->status = ASR5K_SPI_TEST_RUNNING;
+        pResult->current_step = 0U;
+        SPIB_PacketV1WireProbe_Arm();        /* arm + reset recognizer */
+        s_waitCount = 0U;
+        s_state = SELFTEST_STATE_WAIT_DONE;
+        return;
+    }
+
+    SPIB_PacketV1WireProbe_GetSnapshot(&snap);
+
+    if (snap.state == PKTV1_WIRE_PROBE_FRAME_OK) {
+        SPIB_PacketV1WireProbe_Disarm();
+        calculateDelta(pResult);
+        captureFaults(pResult);
+        if ((snap.cmd_id == PKTV1_WIRE_TEST_CMD_PING) &&
+            (snap.payload_words == 0U)) {
+            /* actual = received cmd_id<<16 | receive-OK marker = 0x8000504F. */
+            pResult->actual = ((uint32_t)snap.cmd_id << 16) |
+                              (uint32_t)PKTV1_WIRE_RX_OK_MARKER;
+            pResult->status = ASR5K_SPI_TEST_PASS;
+            g_asr5kSpiSelfTest.completed_test_count++;
+            s_testIndex++;
+            s_stepIndex = 0U;
+            s_waitCount = 0U;
+            g_asr5kSpiSelfTest.current_test_id = 0U;
+            g_asr5kSpiSelfTest.status = ASR5K_SPI_SELFTEST_PASS;
+            setResultText('P', 'A', 'S', 'S');
+            s_state = SELFTEST_STATE_IDLE;
+        } else {
+            pResult->actual = ((uint32_t)snap.cmd_id << 16) |
+                              (uint32_t)snap.payload_words;
+            failSelfTest(ASR5K_SPI_FAIL_STEP_PKTV1_WIRE,
+                         SELFTEST_FAULT_PKTV1_WIRE_BAD_FRAME);
+        }
+        return;
+    }
+
+    if (snap.state == PKTV1_WIRE_PROBE_FRAME_ERROR) {
+        SPIB_PacketV1WireProbe_Disarm();
+        pResult->actual = ((uint32_t)snap.result << 24) |
+                          ((uint32_t)snap.crc_actual & 0xFFFFUL);
+        failSelfTest(ASR5K_SPI_FAIL_STEP_PKTV1_WIRE,
+                     SELFTEST_FAULT_PKTV1_WIRE_BAD_FRAME);
+        return;
+    }
+
+    /* IDLE or COLLECTING: bounded wait for the external master's frame. */
+    s_waitCount++;
+    if (s_waitCount > SELFTEST_PKTV1_WIRE_WAIT_LIMIT) {
+        SPIB_PacketV1WireProbe_Disarm();
+        failSelfTest(ASR5K_SPI_FAIL_STEP_PKTV1_WIRE,
+                     SELFTEST_FAULT_PKTV1_WIRE_TIMEOUT);
+    }
+}
+#endif /* SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1 */
+
 void Asr5kSpiSelfTest_Run(void)
 {
+#if (SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1)
+    /* Test11 uses a passive-receive flow instead of a SPIA master step. */
+    if ((s_state != SELFTEST_STATE_IDLE) &&
+        (currentTest()->eTestId == ASR5K_SPI_TEST_ID_11)) {
+        selfTestRunPktV1Wire();
+        return;
+    }
+#endif
+
     if (s_state == SELFTEST_STATE_IDLE) {
         if (g_asr5kSpiSelfTest.start == 1U) {
             resetResults();

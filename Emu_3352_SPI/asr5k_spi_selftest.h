@@ -29,7 +29,21 @@
 
 #include <stdint.h>
 
+/*
+ * A6-3B gated passive Packet V1 wire probe. Default 0 keeps the selftest at
+ * Test1~Test10 with no wire hook and no external-master requirement. Set to 1
+ * (e.g. a -DSPI_PACKET_V1_WIRE_PROBE_ENABLE=1 test build, NOT via .cproject) to
+ * compile in Test11. The default MUST stay 0 here.
+ */
+#ifndef SPI_PACKET_V1_WIRE_PROBE_ENABLE
+#define SPI_PACKET_V1_WIRE_PROBE_ENABLE 0
+#endif
+
+#if (SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1)
+#define ASR5K_SPI_SELFTEST_RECORD_COUNT 11U
+#else
 #define ASR5K_SPI_SELFTEST_RECORD_COUNT 10U
+#endif
 
 typedef enum {
     ASR5K_SPI_TEST_ID_1 = 1,
@@ -42,6 +56,10 @@ typedef enum {
     ASR5K_SPI_TEST_ID_8,
     ASR5K_SPI_TEST_ID_9,
     ASR5K_SPI_TEST_ID_10
+#if (SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1)
+    ,
+    ASR5K_SPI_TEST_ID_11   /* A6-3B passive Packet V1 wire receive */
+#endif
 } ASR5K_SPI_TEST_ID_e;
 
 typedef enum {
@@ -97,6 +115,10 @@ typedef enum {
     ASR5K_SPI_FAIL_STEP_WAVE_PRECHECK,      /* Test8: validator gatekeeping  */
     ASR5K_SPI_FAIL_STEP_STEP_RESULT,        /* generic per-step result check */
     ASR5K_SPI_FAIL_STEP_PKTV1_PING          /* Test10: Packet V1 PING probe  */
+#if (SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1)
+    ,
+    ASR5K_SPI_FAIL_STEP_PKTV1_WIRE          /* Test11: Packet V1 wire receive */
+#endif
 } ASR5K_SPI_FAIL_STEP_e;
 
 typedef struct {

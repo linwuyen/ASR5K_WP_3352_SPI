@@ -20,6 +20,58 @@
 #include "common.h"
 #include "shareram.h"
 
+/* -----------------------------------------------------------------------
+ * A6-3B: gated SPIB passive Packet V1 wire probe.
+ *
+ * Compiled and active ONLY when SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1. The
+ * default build (macro 0) compiles NONE of this block: no recognizer, no hook,
+ * no accessors, no behavior change whatsoever. The probe is passive observe/
+ * consume only: it never writes the TX FIFO, never sends a PONG, and never
+ * changes DMA channel / length / trigger / wave-burst behavior.
+ * ----------------------------------------------------------------------- */
+#ifndef SPI_PACKET_V1_WIRE_PROBE_ENABLE
+#define SPI_PACKET_V1_WIRE_PROBE_ENABLE 0
+#endif
+
+#if (SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1)
+#include "SPI_PacketV1/spi_packet_v1.h"            /* SPI_PACKET_V1_HEADER_MAGIC */
+#include "SPI_PacketV1/spi_packet_v1_wire_probe.h" /* A6-3A recognizer core      */
+
+#pragma DATA_SECTION(s_pktV1WireProbe, "spib_slave_state")
+static ST_PKTV1_WIRE_PROBE s_pktV1WireProbe;
+#pragma DATA_SECTION(s_u16PktV1WireArmed, "spib_slave_state")
+static uint16_t s_u16PktV1WireArmed = 0U;
+
+void SPIB_PacketV1WireProbe_Reset(void)
+{
+    SpiPacketV1_WireProbe_Reset(&s_pktV1WireProbe);
+}
+
+void SPIB_PacketV1WireProbe_Arm(void)
+{
+    SpiPacketV1_WireProbe_Reset(&s_pktV1WireProbe);
+    s_u16PktV1WireArmed = 1U;
+}
+
+void SPIB_PacketV1WireProbe_Disarm(void)
+{
+    s_u16PktV1WireArmed = 0U;
+}
+
+uint16_t SPIB_PacketV1WireProbe_IsArmed(void)
+{
+    return s_u16PktV1WireArmed;
+}
+
+void SPIB_PacketV1WireProbe_GetSnapshot(ST_PKTV1_WIRE_PROBE *out)
+{
+    if (out != 0)
+    {
+        *out = s_pktV1WireProbe;
+    }
+}
+#endif /* SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1 */
+
 volatile uint16_t OUTPUT_ON;
 
 /* -----------------------------------------------------------------------
@@ -1683,6 +1735,46 @@ void pollReceiveFromSpi(void)
             }
 
             SPIB_RxDmaClearDone();
+
+#if (SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1)
+            /* A6-3B gated passive Packet V1 wire probe (consume-when-header-seen).
+             * When armed, a candidate Packet V1 frame (header word seen, or the
+             * recognizer already COLLECTING) is fed to the A6-3A recognizer and
+             * CONSUMED here: it is NOT routed to SPIB_ParseRegFrame(), the old
+             * 0xA55A packet FSM, or SPIB_ParseLegacyRegFrame(). Consumed frames
+             * are counted parse-ok only (preserving parse_ok == dma_done); they
+             * never bump parse_fail, never set SPIB_RX_ERR_FRAME_PARSE_FAIL, and
+             * never produce a TX/PONG response. DMA is re-armed via the normal
+             * 2-word reg-frame path, so DMA behavior is unchanged. */
+            if ((s_u16PktV1WireArmed != 0U) &&
+                ((u16Cmd == SPI_PACKET_V1_HEADER_MAGIC) ||
+                 (s_pktV1WireProbe.state == PKTV1_WIRE_PROBE_COLLECTING)))
+            {
+                uint16_t u16ProbeWords[2];
+                PKTV1_WIRE_PROBE_RESULT_e eProbeRc;
+
+                u16ProbeWords[0] = u16Cmd;
+                u16ProbeWords[1] = u16Data;
+                eProbeRc = SpiPacketV1_WireProbe_FeedWords(&s_pktV1WireProbe,
+                                                           u16ProbeWords, 2U);
+
+                /* Intentionally consumed by the armed probe: count parse-ok. */
+                gSpibRxParseOkCount++;
+
+                if (eProbeRc != PKTV1_WIRE_PROBE_OK)
+                {
+                    /* Bad CRC / bad length: disarm. The recognizer snapshot
+                     * holds the diagnostic for the selftest surface. The frame
+                     * is NOT handed to the legacy parser. */
+                    s_u16PktV1WireArmed = 0U;
+                }
+
+                /* Re-arm RX DMA exactly as the normal register-frame path. */
+                SPIB_RxRestartRegFrameDma();
+                s_u16PrevRxCmd = u16Cmd;
+                return;
+            }
+#endif /* SPI_PACKET_V1_WIRE_PROBE_ENABLE == 1 */
 
             bParseOk = SPIB_ParseRegFrame(u16Cmd, u16Data);
 
